@@ -27,7 +27,7 @@ from tender_agent.settings import Settings
 _log = get_logger(__name__)
 
 # Tender statuses that are worth fetching full details for.
-ACTIONABLE_STATUSES: frozenset[str] = frozenset({"active.tendering", "active.enquiries"})
+ACTIONABLE_STATUSES: frozenset[str] = frozenset({"active.tendering"})
 
 # Maximum feed pages consumed in a single crawl() call (runaway-loop guard).
 _MAX_FEED_PAGES = 2_000
@@ -165,8 +165,13 @@ class ProzorroClient:
             last_next_offset = next_offset_str
             current_offset = next_offset_str
 
-        # Fetch full details concurrently.
-        tenders = await self._fetch_details(all_actionable_ids)
+        # Fetch full details concurrently, then re-check status to guard against
+        # race conditions where a tender moved out of ACTIONABLE_STATUSES between
+        # the feed scan and the detail fetch.
+        tenders = [
+            t for t in await self._fetch_details(all_actionable_ids)
+            if t.status in ACTIONABLE_STATUSES
+        ]
 
         _log.info(
             "prozorro_crawl_done",
