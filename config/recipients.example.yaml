@@ -1,0 +1,34 @@
+# ============================================================================
+#  Recipients of the daily tender report.
+#
+#  HOW TO USE:
+#    1. Copy this file to the project root as "recipients.yaml".
+#    2. Edit the lists below with real email addresses.
+#    3. Save. The agent reloads this file automatically on every run —
+#       no restart needed.
+#
+#  THREE LISTS:
+#    to  — main recipients (everyone sees these addresses).
+#    cc  — carbon copy (everyone sees these addresses too).
+#    bcc — blind carbon copy (hidden — other recipients do NOT see them).
+#
+#  RULES:
+#    - One address per line, each starting with "- ".
+#    - "to" must contain at least one address. "cc" and "bcc" may be empty.
+#    - To leave a list empty, write:  cc: []
+#
+#  NOTE: the real "recipients.yaml" is git-ignored so personal email
+#        addresses are never published.
+# ============================================================================
+
+to:
+  - manager@example.com
+  - sales@example.com
+
+cc:
+  - director@example.com
+  - assistant@example.com
+
+bcc:
+  - archive@example.com
+  - audit@example.com

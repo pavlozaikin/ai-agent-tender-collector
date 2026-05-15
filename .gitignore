@@ -179,3 +179,26 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# ── Tender agent: secrets, runtime data, working docs ──────────────────────
+# Real configuration with credentials / personal data — never commit.
+.env
+recipients.yaml
+*.local.yaml
+credentials/
+
+# Runtime data: SQLite database, rendered reports.
+data/
+reports/
+*.db
+*.sqlite3
+
+# Generated working / planning docs (kept local only).
+CLAUDE.md
+*.plan.md
+/plans/
+.claude/
+
+# IDE
+.idea/
+.vscode/

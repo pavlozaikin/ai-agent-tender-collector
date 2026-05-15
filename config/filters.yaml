@@ -1,0 +1,66 @@
+# ============================================================================
+#  Prefilter configuration — the BROAD, deliberately over-inclusive net.
+#
+#  This stage only narrows the PROZORRO firehose cheaply (no LLM cost).
+#  It is meant to be wide: it is better to pass an irrelevant tender to the
+#  LLM than to silently drop a relevant one. The LLM makes the final
+#  relevance decision afterwards.
+#
+#  A tender is kept if EITHER:
+#    - its ДК 021:2015 (CPV) classification code starts with one of
+#      `cpv_prefixes` below, OR
+#    - its title or any item description contains one of `keywords`.
+# ============================================================================
+
+# Broad ДК 021:2015 (CPV) group prefixes covering automotive chemistry.
+#   0921  — Мастильні засоби (lubricants: motor/industrial/base oils, greases,
+#           brake fluids, hydraulic fluids, transmission oils).
+#   2495  — Хімічна продукція спеціального призначення (special-purpose
+#           chemicals: includes anti-freezing preparations / coolants).
+#   2496  — Хімічна продукція різна (miscellaneous chemical products).
+cpv_prefixes:
+  - "0921"
+  - "2495"
+  - "2496"
+
+# Case-insensitive substrings matched against tender title and item
+# descriptions. Ukrainian + Russian spellings, plus common product markings.
+keywords:
+  # coolants / antifreeze
+  - "антифриз"
+  - "тосол"
+  - "охолоджуюч"
+  - "охолоджувальн"
+  - "охлаждающ"
+  - "етиленгліколь"
+  - "пропіленгліколь"
+  - "g11"
+  - "g12"
+  - "g13"
+  # brake fluids
+  - "гальмівн"
+  - "гальмова рідина"
+  - "тормозн"
+  - "dot 3"
+  - "dot 4"
+  - "dot4"
+  - "dot 5"
+  # washer fluids
+  - "омивач"
+  - "омыват"
+  - "склоомивач"
+  - "склообмивач"
+  - "рідина для скла"
+  # motor / industrial / base oils
+  - "олива"
+  - "оливи"
+  - "оливу"
+  - "мастил"
+  - "моторн"
+  - "індустріальн"
+  - "индустриальн"
+  - "трансмісійн"
+  - "гідравлічн"
+  - "базов олив"
+  - "моторное масло"
+  - "масло моторн"

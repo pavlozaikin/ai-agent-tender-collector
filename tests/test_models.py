@@ -1,0 +1,56 @@
+"""Tests for the PROZORRO pydantic models."""
+
+from __future__ import annotations
+
+from tender_agent.prozorro.models import Classification, FeedPage, NextPage, Tender, TenderItem
+from tests.conftest import make_tender
+
+
+def test_web_url_uses_public_id() -> None:
+    tender = make_tender(public_id="UA-2026-05-01-000123-a")
+    assert tender.web_url == "https://prozorro.gov.ua/tender/UA-2026-05-01-000123-a"
+
+
+def test_public_id_falls_back_to_raw_id() -> None:
+    tender = Tender(id="rawhex", tenderID=None)
+    assert tender.public_id == "rawhex"
+    assert tender.web_url.endswith("/rawhex")
+
+
+def test_classification_codes_collects_main_and_additional() -> None:
+    item = TenderItem(
+        classification=Classification(id="09210000-4"),
+        additionalClassifications=[Classification(id="24951311-8")],
+    )
+    tender = Tender(id="x", items=[item])
+    assert set(tender.classification_codes()) == {"09210000-4", "24951311-8"}
+
+
+def test_searchable_text_includes_title_and_items() -> None:
+    tender = make_tender(title="Антифриз", item_description="G12 червоний")
+    text = tender.searchable_text()
+    assert "Антифриз" in text
+    assert "G12 червоний" in text
+
+
+def test_extra_api_fields_are_ignored() -> None:
+    tender = Tender.model_validate({"id": "x", "unexpectedField": {"deep": 1}, "title": "ok"})
+    assert tender.title == "ok"
+
+
+def test_next_page_offset_str_normalises_numeric() -> None:
+    assert NextPage(offset=1714000000.5).offset_str == "1714000000.5"
+    assert NextPage(offset="2026-05-01").offset_str == "2026-05-01"
+    assert NextPage(offset=None).offset_str is None
+
+
+def test_feed_page_parses_entries_with_status() -> None:
+    page = FeedPage.model_validate(
+        {
+            "data": [{"id": "a", "status": "active.tendering"}],
+            "next_page": {"offset": "cursor-1"},
+        }
+    )
+    assert page.data[0].status == "active.tendering"
+    assert page.next_page is not None
+    assert page.next_page.offset_str == "cursor-1"

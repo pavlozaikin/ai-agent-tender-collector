@@ -1,0 +1,19 @@
+services:
+  tender-agent:
+    build: .
+    image: tender-agent:latest
+    container_name: tender-agent
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Persistent SQLite database + rendered reports.
+      - tender-data:/app/data
+      # Recipient list — edit on the host, the agent reloads it each run.
+      - ./recipients.yaml:/app/recipients.yaml:ro
+      # Prefilter config — edit on the host without rebuilding the image.
+      - ./config/filters.yaml:/app/config/filters.yaml:ro
+    # Default command (`schedule`) is defined in the Dockerfile.
+
+volumes:
+  tender-data:
