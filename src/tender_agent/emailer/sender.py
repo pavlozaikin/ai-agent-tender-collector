@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import smtplib
+from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
@@ -13,43 +14,51 @@ from tender_agent.settings import Settings
 
 log = get_logger(__name__)
 
-_PLAIN_FALLBACK = (
-    "Цей звіт доступний лише у форматі HTML.\n"
-    "Будь ласка, відкрийте його у поштовому клієнті з підтримкою HTML."
-)
-
 
 class EmailSendError(Exception):
     """Raised when the email could not be delivered."""
 
 
 class EmailSender:
-    """Sends HTML email reports via SMTP."""
+    """Sends email reports via SMTP."""
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
 
-    def send(self, subject: str, html_body: str, recipients: Recipients) -> None:
-        """Build and dispatch an HTML email.
+    def send(
+        self,
+        subject: str,
+        body_text: str,
+        recipients: Recipients,
+        pdf_attachment: bytes | None = None,
+        pdf_filename: str = "report.pdf",
+    ) -> None:
+        """Build and dispatch an email with a plain-text body and optional PDF attachment.
 
         Args:
-            subject: Email subject line (will be UTF-8 encoded).
-            html_body: Full HTML body of the report.
+            subject: Email subject line (UTF-8 encoded).
+            body_text: Plain-text body of the email.
             recipients: Recipient lists (to/cc/bcc).
+            pdf_attachment: Raw PDF bytes to attach, or None for no attachment.
+            pdf_filename: Filename shown in the attachment.
 
         Raises:
             EmailSendError: If the connection or send fails.
         """
         s = self._settings
-        msg = MIMEMultipart("alternative")
+        msg = MIMEMultipart("mixed")
         msg["Subject"] = subject
-        msg["From"] = formataddr(("Tender Agent", s.sender_address))
+        msg["From"] = formataddr(("ШІ-Тендерник", s.sender_address))
         msg["To"] = ", ".join(recipients.to)
         if recipients.cc:
             msg["Cc"] = ", ".join(recipients.cc)
 
-        msg.attach(MIMEText(_PLAIN_FALLBACK, "plain", "utf-8"))
-        msg.attach(MIMEText(html_body, "html", "utf-8"))
+        msg.attach(MIMEText(body_text, "plain", "utf-8"))
+
+        if pdf_attachment is not None:
+            part = MIMEApplication(pdf_attachment, _subtype="pdf")
+            part.add_header("Content-Disposition", "attachment", filename=pdf_filename)
+            msg.attach(part)
 
         envelope_recipients = recipients.to + recipients.cc + recipients.bcc
 
@@ -71,6 +80,7 @@ class EmailSender:
             to_count=len(recipients.to),
             cc_count=len(recipients.cc),
             bcc_count=len(recipients.bcc),
+            has_pdf=pdf_attachment is not None,
         )
 
     def _connect(self) -> smtplib.SMTP:

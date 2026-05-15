@@ -49,7 +49,9 @@ class PipelineState(TypedDict, total=False):
     classified: list[ClassifiedTender]  # classify: LLM-confirmed relevant
     new_tenders: list[ClassifiedTender]  # dedupe: not previously reported
     report_subject: str  # render: email subject
-    report_html: str  # render: email HTML body
+    report_html: str  # render: full HTML report (saved to disk + used for PDF)
+    report_summary: str  # render: plain-text email body
+    report_pdf: bytes | None  # render: PDF bytes of the full report
     report_path: str | None  # render: saved report file path
     email_sent: bool  # notify: whether an email was dispatched
     new_offset: str | None  # crawl: feed cursor to persist

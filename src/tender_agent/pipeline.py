@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 
 from langgraph.graph import END, StateGraph
 
+from tender_agent.emailer.pdf import render_pdf
 from tender_agent.emailer.recipients import load_recipients
 from tender_agent.emailer.report import render_report
 from tender_agent.emailer.sender import EmailSender
@@ -106,17 +107,20 @@ async def _dedupe(ctx: PipelineContext, state: PipelineState) -> dict[str, objec
     return {"new_tenders": new, "counters": _merge_counters(state, new=len(new))}
 
 
-def _save_report(ctx: PipelineContext, html: str, generated_at: datetime) -> Path:
-    """Persist the rendered HTML report to disk for the audit trail."""
+def _save_report(ctx: PipelineContext, html: str, pdf: bytes, generated_at: datetime) -> Path:
+    """Persist the rendered HTML + PDF report to disk for the audit trail."""
     reports_dir = ctx.settings.reports_dir
     reports_dir.mkdir(parents=True, exist_ok=True)
-    path = reports_dir / f"report-{generated_at:%Y%m%d-%H%M%S}.html"
-    path.write_text(html, encoding="utf-8")
-    return path
+    stem = f"report-{generated_at:%Y%m%d-%H%M%S}"
+    html_path = reports_dir / f"{stem}.html"
+    html_path.write_text(html, encoding="utf-8")
+    pdf_path = reports_dir / f"{stem}.pdf"
+    pdf_path.write_bytes(pdf)
+    return html_path
 
 
 async def _render(ctx: PipelineContext, state: PipelineState) -> dict[str, object]:
-    """Generate Ukrainian summaries and render the HTML report."""
+    """Generate Ukrainian summaries, render the HTML report, and convert to PDF."""
     new = state.get("new_tenders", [])
     sem = asyncio.Semaphore(_SUMMARY_CONCURRENCY)
 
@@ -127,11 +131,14 @@ async def _render(ctx: PipelineContext, state: PipelineState) -> dict[str, objec
     await asyncio.gather(*(summarize_one(c) for c in new))
     generated_at = datetime.now(ZoneInfo(ctx.settings.timezone))
     report = render_report(new, generated_at)
-    path = _save_report(ctx, report.html, generated_at)
+    pdf_bytes = render_pdf(report.html)
+    path = _save_report(ctx, report.html, pdf_bytes, generated_at)
     _log.info("render_node", tenders=len(new), report_path=str(path))
     return {
         "report_subject": report.subject,
         "report_html": report.html,
+        "report_summary": report.summary,
+        "report_pdf": pdf_bytes,
         "report_path": str(path),
     }
 
@@ -141,9 +148,17 @@ async def _notify(ctx: PipelineContext, state: PipelineState) -> dict[str, objec
     if ctx.dry_run:
         _log.info("notify_node_skipped", reason="dry_run", report_path=state.get("report_path"))
         return {"email_sent": False}
+    generated_at = datetime.now(ZoneInfo(ctx.settings.timezone))
+    date_str = generated_at.strftime("%d.%m.%Y")
     recipients = load_recipients(ctx.settings.recipients_path)
     sender = EmailSender(ctx.settings)
-    sender.send(state["report_subject"], state["report_html"], recipients)
+    sender.send(
+        subject=state["report_subject"],
+        body_text=state["report_summary"],
+        recipients=recipients,
+        pdf_attachment=state.get("report_pdf"),
+        pdf_filename=f"tenders-{date_str}.pdf",
+    )
     _log.info("notify_node_sent")
     return {"email_sent": True}
 

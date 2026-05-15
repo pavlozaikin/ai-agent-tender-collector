@@ -43,8 +43,15 @@ class FakeEmailSender:
     def __init__(self, _settings: Settings) -> None:
         pass
 
-    def send(self, subject: str, html_body: str, recipients: Any) -> None:
-        FakeEmailSender.sent.append((subject, html_body, recipients))
+    def send(
+        self,
+        subject: str,
+        body_text: str,
+        recipients: Any,
+        pdf_attachment: bytes | None = None,
+        pdf_filename: str = "report.pdf",
+    ) -> None:
+        FakeEmailSender.sent.append((subject, body_text, recipients))
 
 
 def _install_fakes(
@@ -103,7 +110,7 @@ async def test_pipeline_reports_new_relevant_tenders(
 
     assert final["email_sent"] is True
     assert len(FakeEmailSender.sent) == 1
-    assert "2 нових" in FakeEmailSender.sent[0][0]
+    assert "2 нових тендерів" in FakeEmailSender.sent[0][0]
 
     assert storage.get_offset() == "cursor-final"
     assert storage.filter_unseen(["t1", "t2"]) == set()  # both recorded

@@ -5,10 +5,15 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from tender_agent.emailer.pdf import render_pdf
+from tender_agent.emailer.recipients import load_recipients
+from tender_agent.emailer.sender import EmailSender
 from tender_agent.llm import LLMClient, apply_provider_keys
 from tender_agent.logging import configure_logging, get_logger
 from tender_agent.pipeline import PipelineContext, run_pipeline
@@ -97,6 +102,57 @@ def _cmd_healthcheck(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_reset_seen(settings: Settings, args: argparse.Namespace) -> int:
+    with Storage(settings.db_path) as storage:
+        deleted = storage.clear_seen()
+    print(f"Видалено {deleted} записів із seen_tenders. Наступний запуск надішле повний звіт.")
+    return 0
+
+
+def _cmd_test_send(settings: Settings, args: argparse.Namespace) -> int:
+    """Re-render the latest saved HTML report to PDF and send it, bypassing Prozorro."""
+    reports_dir = settings.reports_dir
+    html_files = sorted(reports_dir.glob("report-*.html"))
+    if not html_files:
+        print(f"Немає збережених звітів у {reports_dir}", file=sys.stderr)
+        return 1
+
+    html_path = html_files[-1]
+    print(f"Використовуємо звіт: {html_path}")
+
+    html = html_path.read_text(encoding="utf-8")
+    print("Конвертуємо HTML у PDF…")
+    pdf_bytes = render_pdf(html)
+
+    # Save the new PDF alongside the HTML for inspection.
+    pdf_path = html_path.with_suffix(".pdf")
+    pdf_path.write_bytes(pdf_bytes)
+    print(f"PDF збережено: {pdf_path}")
+
+    if args.no_email:
+        print("Прапор --no-email: email не надсилається.")
+        return 0
+
+    recipients = load_recipients(settings.recipients_path)
+    sender = EmailSender(settings)
+    date_str = datetime.now(ZoneInfo(settings.timezone)).strftime("%d.%m.%Y")
+    subject = f"[TEST] Тендери з автохімії — {date_str}"
+    body = (
+        "Це тестове надсилання.\n\n"
+        f"PDF-звіт сформовано з файлу: {html_path.name}\n"
+        "Перевірте вкладення."
+    )
+    sender.send(
+        subject=subject,
+        body_text=body,
+        recipients=recipients,
+        pdf_attachment=pdf_bytes,
+        pdf_filename=f"tenders-{date_str}.pdf",
+    )
+    print("Email надіслано.")
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tender-agent",
@@ -124,6 +180,28 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     sub.add_parser("healthcheck", help="Exit 0 when the agent is healthy.")
+
+    sub.add_parser(
+        "reset-seen",
+        help=(
+            "Clear the seen-tenders history so the next run re-reports all known tenders. "
+            "Useful when you want a fresh full PDF report."
+        ),
+    )
+
+    test_send_parser = sub.add_parser(
+        "test-send",
+        help=(
+            "Re-render the latest saved HTML report to PDF and send it via email, "
+            "bypassing the Prozorro API and LLM steps."
+        ),
+    )
+    test_send_parser.add_argument(
+        "--no-email",
+        action="store_true",
+        help="Convert to PDF and save it, but do not send the email.",
+    )
+
     return parser
 
 
@@ -138,6 +216,8 @@ def main() -> None:
         "schedule": _cmd_schedule,
         "stats": _cmd_stats,
         "healthcheck": _cmd_healthcheck,
+        "reset-seen": _cmd_reset_seen,
+        "test-send": _cmd_test_send,
     }
     sys.exit(handlers[args.command](settings, args))
 

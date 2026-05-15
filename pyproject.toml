@@ -20,6 +20,7 @@ dependencies = [
     "tenacity>=8.3.0",
     "structlog>=24.1.0",
     "email-validator>=2.1.0",
+    "weasyprint>=62.0",
 ]
 
 [project.scripts]
