@@ -51,3 +51,11 @@ def test_keywords_are_lowercased() -> None:
     filters = Filters(cpv_prefixes=(), keywords=("антифриз",))
     tender = make_tender(cpv=None, title="АНТИФРИЗ ОПТОМ", item_description="x")
     assert filters.matches(tender) is True
+
+
+def test_load_filters_invalid_yaml(tmp_path: Path) -> None:
+    """Lines 44-45: yaml.YAMLError branch."""
+    path = tmp_path / "bad.yaml"
+    path.write_text("key: [\n  unclosed\n", encoding="utf-8")
+    with pytest.raises(FiltersError, match="Invalid YAML"):
+        load_filters(path)

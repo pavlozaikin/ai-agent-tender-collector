@@ -13,9 +13,12 @@ from tender_agent.llm import (
     LLMClient,
     ModelSpec,
     TenderRelevance,
+    _build_model,
+    _tender_to_text,
     apply_provider_keys,
     estimate_cost,
 )
+from tender_agent.prozorro.models import Period, TenderItem, Unit, Value
 from tender_agent.settings import Settings
 from tender_agent.storage import Storage
 from tests.conftest import make_tender
@@ -142,3 +145,132 @@ async def test_classify_returns_default_when_all_models_fail(
     result = await client.classify(make_tender())
     assert result.relevant is False
     assert result.category == "other"
+
+
+async def test_summarize_returns_empty_when_all_models_fail(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings, storage: Storage
+) -> None:
+    """Lines 249-257: _run_text exhausts all models and returns empty string."""
+    monkeypatch.setattr(llm_module, "_build_model", lambda _spec: FakeChatModel(fail=True))
+    client = LLMClient(settings, storage)
+    result = await client.summarize(make_tender())
+    assert result == ""
+
+
+async def test_classify_parsed_none_branch(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings, storage: Storage
+) -> None:
+    """Line 229: structured output returns parsed=None — falls back to backup then default."""
+
+    class _NoneStructured:
+        async def ainvoke(self, _messages: Any) -> dict[str, Any]:
+            return {"raw": AIMessage(content="", usage_metadata=_USAGE), "parsed": None}
+
+    class _NoneModel:
+        def with_structured_output(
+            self, _schema: Any, *, include_raw: bool = False
+        ) -> _NoneStructured:
+            return _NoneStructured()
+
+    monkeypatch.setattr(llm_module, "_build_model", lambda _spec: _NoneModel())
+    client = LLMClient(settings, storage)
+    result = await client.classify(make_tender())
+    # Both primary and backup return parsed=None, so falls back to default.
+    assert result.relevant is False
+    assert result.category == "other"
+
+
+# ── _build_model provider branches ──────────────────────────────────────────
+
+
+def test_build_model_gemini_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Lines 87-89: 'gemini' is remapped to 'google_genai' before init_chat_model."""
+    calls: list[tuple[str, str]] = []
+
+    def fake_init(model: str, model_provider: str) -> Any:
+        calls.append((model, model_provider))
+        return object()
+
+    monkeypatch.setattr(llm_module, "init_chat_model", fake_init)
+    spec = ModelSpec(provider="gemini", model="gemini-pro")
+    _build_model(spec)
+    assert calls == [("gemini-pro", "google_genai")]
+
+
+def test_build_model_google_genai_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Lines 87-89: 'google-genai' is also remapped."""
+    calls: list[tuple[str, str]] = []
+
+    def fake_init(model: str, model_provider: str) -> Any:
+        calls.append((model, model_provider))
+        return object()
+
+    monkeypatch.setattr(llm_module, "init_chat_model", fake_init)
+    spec = ModelSpec(provider="google-genai", model="gemini-pro")
+    _build_model(spec)
+    assert calls == [("gemini-pro", "google_genai")]
+
+
+def test_build_model_perplexity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Lines 90-97: 'perplexity' provider imports ChatPerplexity."""
+
+    class FakePerplexity:
+        def __init__(self, model: str, timeout: object) -> None:
+            pass
+
+    import types
+
+    fake_module = types.ModuleType("langchain_perplexity")
+    fake_module.ChatPerplexity = FakePerplexity  # type: ignore[attr-defined]
+
+    import sys
+
+    monkeypatch.setitem(sys.modules, "langchain_perplexity", fake_module)
+
+    spec = ModelSpec(provider="perplexity", model="sonar-pro")
+    result = _build_model(spec)
+    assert isinstance(result, FakePerplexity)
+
+
+# ── _tender_to_text branches ─────────────────────────────────────────────────
+
+
+def test_tender_to_text_with_description_and_value() -> None:
+    """Lines 149, 155-157: description and value branches."""
+    from tender_agent.prozorro.models import Tender as ProzorroTender
+
+    tender = ProzorroTender(
+        id="t1",
+        tenderID="UA-T1",
+        status="active.tendering",
+        title="Тест",
+        description="Детальний опис закупівлі",
+        value=Value(amount=10000.0, currency="UAH"),
+        items=[],
+    )
+    text = _tender_to_text(tender)
+    assert "Детальний опис закупівлі" in text
+    assert "10000.0 UAH" in text
+
+
+def test_tender_to_text_with_delivery_window() -> None:
+    """Lines 164-166: delivery_window branch."""
+    from tender_agent.prozorro.models import Tender as ProzorroTender
+
+    item = TenderItem(
+        id="i1",
+        description="Антифриз",
+        quantity=10,
+        unit=Unit(name="л"),
+        deliveryDate=Period(startDate="2026-06-01", endDate="2026-06-30"),
+    )
+    tender = ProzorroTender(
+        id="t2",
+        tenderID="UA-T2",
+        status="active.tendering",
+        title="Тест доставки",
+        items=[item],
+    )
+    text = _tender_to_text(tender)
+    assert "Строк поставки" in text
+    assert "2026-06-01" in text

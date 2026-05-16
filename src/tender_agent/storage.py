@@ -89,9 +89,7 @@ class Storage:
             ("tender_period_end", "TEXT"),
         ]:
             with contextlib.suppress(sqlite3.OperationalError):
-                self._conn.execute(
-                    f"ALTER TABLE seen_tenders ADD COLUMN {col} {typedef}"
-                )
+                self._conn.execute(f"ALTER TABLE seen_tenders ADD COLUMN {col} {typedef}")
 
     # ── lifecycle ───────────────────────────────────────────────────────────
     def close(self) -> None:
@@ -163,9 +161,15 @@ class Storage:
             "  tender_period_end = excluded.tender_period_end",
             [
                 (
-                    r.tender_id, r.public_id, r.category, r.status,
-                    r.title, r.summary, r.tender_period_end or None,
-                    now, now,
+                    r.tender_id,
+                    r.public_id,
+                    r.category,
+                    r.status,
+                    r.title,
+                    r.summary,
+                    r.tender_period_end or None,
+                    now,
+                    now,
                 )
                 for r in records
             ],

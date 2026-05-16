@@ -91,3 +91,69 @@ def test_send_skips_login_without_username(
     assert smtp is not None
     assert smtp.login_args is None
     assert smtp.started_tls is False
+
+
+def test_send_attaches_pdf(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings, recipients: Recipients
+) -> None:
+    """Lines 59-61: PDF attachment branch."""
+    monkeypatch.setattr(sender_module.smtplib, "SMTP", FakeSMTP)
+    pdf = b"%PDF-1.4 fake"
+    EmailSender(settings).send("Тема", "body", recipients, pdf_attachment=pdf, pdf_filename="x.pdf")
+
+    smtp = FakeSMTP.last
+    assert smtp is not None
+    assert smtp.sent is not None
+    _from, _to, raw_msg = smtp.sent
+    assert b"x.pdf" in raw_msg
+
+
+def test_send_wraps_os_errors(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings, recipients: Recipients
+) -> None:
+    """Lines 75-76: OSError is wrapped into EmailSendError."""
+
+    class BrokenSMTP(FakeSMTP):
+        def login(self, user: str, password: str) -> None:
+            raise OSError("connection refused")
+
+    monkeypatch.setattr(sender_module.smtplib, "SMTP", BrokenSMTP)
+    with pytest.raises(sender_module.EmailSendError, match="Network error"):
+        EmailSender(settings).send("Тема", "body", recipients)
+
+
+class FakeSMTP_SSL:
+    """Simulates smtplib.SMTP_SSL."""
+
+    last: FakeSMTP_SSL | None = None
+
+    def __init__(self, host: str, port: int) -> None:
+        self.host = host
+        self.port = port
+        self.login_args: tuple[str, str] | None = None
+        self.sent: tuple[str, list[str], bytes] | None = None
+        self.quit_called = False
+        FakeSMTP_SSL.last = self
+
+    def login(self, user: str, password: str) -> None:
+        self.login_args = (user, password)
+
+    def sendmail(self, from_addr: str, to_addrs: list[str], msg: bytes) -> None:
+        self.sent = (from_addr, to_addrs, msg)
+
+    def quit(self) -> None:
+        self.quit_called = True
+
+
+def test_send_ssl_connect(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings, recipients: Recipients
+) -> None:
+    """Line 90: smtp_security='ssl' uses SMTP_SSL."""
+    monkeypatch.setattr(sender_module.smtplib, "SMTP_SSL", FakeSMTP_SSL)
+    ssl_settings = settings.model_copy(update={"smtp_security": "ssl"})
+    EmailSender(ssl_settings).send("Тема", "body", recipients)
+
+    smtp = FakeSMTP_SSL.last
+    assert smtp is not None
+    assert smtp.sent is not None
+    assert smtp.quit_called is True

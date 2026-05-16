@@ -58,3 +58,17 @@ def test_non_mapping_raises(tmp_path: Path) -> None:
     path = _write(tmp_path / "r.yaml", "- a@example.com\n")
     with pytest.raises(RecipientsError, match="mapping"):
         load_recipients(path)
+
+
+def test_invalid_yaml_raises(tmp_path: Path) -> None:
+    """Lines 57-58: yaml.YAMLError branch."""
+    path = _write(tmp_path / "r.yaml", "to: [\n  unclosed bracket\n")
+    with pytest.raises(RecipientsError, match="Invalid YAML"):
+        load_recipients(path)
+
+
+def test_non_list_field_raises(tmp_path: Path) -> None:
+    """Line 70: non-list value for a recipient field."""
+    path = _write(tmp_path / "r.yaml", "to:\n  - a@example.com\ncc: not-a-list\n")
+    with pytest.raises(RecipientsError, match="must be a list"):
+        load_recipients(path)

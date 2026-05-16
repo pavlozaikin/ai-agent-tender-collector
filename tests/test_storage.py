@@ -84,12 +84,16 @@ def test_get_deadline_reminders_within_window(storage: Storage) -> None:
     far = (now + timedelta(days=10)).isoformat()
     past = (now - timedelta(days=1)).isoformat()
 
-    storage.mark_reported([
-        SeenRecord("t-soon", "UA-soon", "coolant", "active", "Soon tender", "Summary A", soon),
-        SeenRecord("t-far", "UA-far", "motor_oil", "active", "Far tender", "Summary B", far),
-        SeenRecord("t-past", "UA-past", "brake_fluid", "active", "Past tender", "Summary C", past),
-        SeenRecord("t-none", "UA-none", "washer_fluid", "active", "No deadline", "", ""),
-    ])
+    storage.mark_reported(
+        [
+            SeenRecord("t-soon", "UA-soon", "coolant", "active", "Soon tender", "Summary A", soon),
+            SeenRecord("t-far", "UA-far", "motor_oil", "active", "Far tender", "Summary B", far),
+            SeenRecord(
+                "t-past", "UA-past", "brake_fluid", "active", "Past tender", "Summary C", past
+            ),
+            SeenRecord("t-none", "UA-none", "washer_fluid", "active", "No deadline", "", ""),
+        ]
+    )
 
     reminders = storage.get_deadline_reminders(days_ahead=3)
     ids = {r["public_id"] for r in reminders}
