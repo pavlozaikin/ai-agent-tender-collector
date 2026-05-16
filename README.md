@@ -2,7 +2,7 @@
 
 An AI agent that crawls the Ukrainian public procurement platform **PROZORRO** daily, identifies tenders related to automotive chemicals, and delivers a formatted report by email — with deadline reminders for tenders already on your radar.
 
-![CI](https://github.com/your-org/ai-agent-tender-collector/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/pavlozaikin/ai-agent-tender-collector/actions/workflows/ci.yml/badge.svg)
 ![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
 
 ---
@@ -75,7 +75,7 @@ PROZORRO   broad          LLM —       drop        warn about       HTML +     
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-org/ai-agent-tender-collector.git
+git clone https://github.com/pavlozaikin/ai-agent-tender-collector.git
 cd ai-agent-tender-collector
 
 # 2. Create the environment file
