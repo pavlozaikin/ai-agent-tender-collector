@@ -137,8 +137,8 @@ _CLASSIFY_SYSTEM = (
 
 _REPORT_SYSTEM = (
     "Ти асистент менеджера з продажу автохімії. Напиши стислий опис тендера "
-    "українською мовою (1-2 речення): що закуповують, обсяг та орієнтовну "
-    "вартість. Без вступних фраз, лише суть."
+    "українською мовою (1-2 речення): що закуповують, обсяг, орієнтовну "
+    "вартість та строк поставки (якщо вказано). Без вступних фраз, лише суть."
 )
 
 
@@ -161,6 +161,9 @@ def _tender_to_text(tender: Tender) -> str:
             unit = item.unit.name if item.unit and item.unit.name else ""
             qty = f" — {item.quantity} {unit}".rstrip()
         lines.append(f"Позиція: {item.description or '—'}{qty}")
+    start, end = tender.delivery_window()
+    if start or end:
+        lines.append(f"Строк поставки: {start or '?'} — {end or '?'}")
     return "\n".join(lines)
 
 

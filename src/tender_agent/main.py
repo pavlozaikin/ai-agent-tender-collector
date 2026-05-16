@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import sys
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.blocking import BlockingScheduler
@@ -109,6 +110,25 @@ def _cmd_reset_seen(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_reset_db(settings: Settings, args: argparse.Namespace) -> int:
+    db_path = Path(settings.db_path)
+    if not bool(args.yes):
+        print(
+            "Ця команда видалить файл SQLite-бази та всю історію стану/дедуплікації.\n"
+            f"Файл: {db_path}\n"
+            "Щоб продовжити, запустіть: tender-agent reset-db --yes",
+            file=sys.stderr,
+        )
+        return 1
+
+    if db_path.exists():
+        db_path.unlink()
+        print(f"SQLite-базу видалено: {db_path}")
+    else:
+        print(f"SQLite-базу не знайдено (нічого видаляти): {db_path}")
+    return 0
+
+
 def _cmd_test_send(settings: Settings, args: argparse.Namespace) -> int:
     """Re-render the latest saved HTML report to PDF and send it, bypassing Prozorro."""
     reports_dir = settings.reports_dir
@@ -189,6 +209,19 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    reset_db_parser = sub.add_parser(
+        "reset-db",
+        help=(
+            "Delete the SQLite DB file (state, deduplication, and usage stats). "
+            "Next run will behave like a first run."
+        ),
+    )
+    reset_db_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Actually delete the DB file (required).",
+    )
+
     test_send_parser = sub.add_parser(
         "test-send",
         help=(
@@ -217,6 +250,7 @@ def main() -> None:
         "stats": _cmd_stats,
         "healthcheck": _cmd_healthcheck,
         "reset-seen": _cmd_reset_seen,
+        "reset-db": _cmd_reset_db,
         "test-send": _cmd_test_send,
     }
     sys.exit(handlers[args.command](settings, args))

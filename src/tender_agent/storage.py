@@ -145,6 +145,15 @@ class Storage:
         )
         self._conn.commit()
 
+    def clear_seen(self) -> int:
+        """Delete all persisted deduplication records (seen tenders).
+
+        Returns the number of deleted rows.
+        """
+        cur = self._conn.execute("DELETE FROM seen_tenders")
+        self._conn.commit()
+        return int(cur.rowcount)
+
     # ── LLM usage statistics ────────────────────────────────────────────────
     def record_usage(self, usage: UsageRecord) -> None:
         """Log one LLM call's token usage and estimated cost."""

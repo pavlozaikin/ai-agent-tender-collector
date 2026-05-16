@@ -44,6 +44,7 @@ class TenderItem(_Lenient):
     unit: Unit | None = None
     classification: Classification | None = None
     additionalClassifications: list[Classification] = Field(default_factory=list)
+    deliveryDate: Period | None = None
 
 
 class ProcuringEntity(_Lenient):
@@ -79,6 +80,12 @@ class Tender(_Lenient):
     def web_url(self) -> str:
         """Direct, human-verifiable link to the tender on prozorro.gov.ua."""
         return _PUBLIC_TENDER_URL.format(ident=self.public_id)
+
+    def delivery_window(self) -> tuple[str | None, str | None]:
+        """Earliest startDate and latest endDate across all items' deliveryDate."""
+        starts = [i.deliveryDate.startDate for i in self.items if i.deliveryDate and i.deliveryDate.startDate]
+        ends = [i.deliveryDate.endDate for i in self.items if i.deliveryDate and i.deliveryDate.endDate]
+        return (min(starts) if starts else None, max(ends) if ends else None)
 
     def classification_codes(self) -> list[str]:
         """All ДК 021:2015 / CPV codes attached to the tender's items."""

@@ -55,3 +55,19 @@ def test_usage_rollup_aggregates(storage: Storage) -> None:
 
 def test_usage_rollup_empty(storage: Storage) -> None:
     assert storage.usage_rollup() == []
+
+
+def test_clear_seen_deletes_all_seen_rows(storage: Storage) -> None:
+    storage.mark_reported(
+        [
+            SeenRecord(tender_id="a", public_id="UA-a", category="coolant", status="active"),
+            SeenRecord(tender_id="b", public_id="UA-b", category="motor_oil", status="active"),
+        ]
+    )
+    assert storage.is_seen("a") is True
+    assert storage.is_seen("b") is True
+
+    deleted = storage.clear_seen()
+    assert deleted == 2
+    assert storage.is_seen("a") is False
+    assert storage.is_seen("b") is False

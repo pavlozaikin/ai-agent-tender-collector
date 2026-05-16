@@ -27,6 +27,12 @@ def test_parser_requires_subcommand() -> None:
         _build_parser().parse_args([])
 
 
+def test_parser_reset_db_requires_yes_flag_for_execution() -> None:
+    args = _build_parser().parse_args(["reset-db"])
+    assert args.command == "reset-db"
+    assert args.yes is False
+
+
 def test_healthcheck_ok(settings: Settings, capsys: pytest.CaptureFixture[str]) -> None:
     assert _cmd_healthcheck(settings, argparse.Namespace()) == 0
     assert "ok" in capsys.readouterr().out

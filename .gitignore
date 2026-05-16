@@ -1,3 +1,6 @@
+#macOS specific
+.DS_Store
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -198,6 +201,8 @@ CLAUDE.md
 *.plan.md
 /plans/
 .claude/
+
+CODEX.md
 
 # IDE
 .idea/
