@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
-from dataclasses import dataclass
-from datetime import UTC, datetime
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import TracebackType
 from typing import Any
@@ -51,6 +52,9 @@ class SeenRecord:
     public_id: str
     category: str
     status: str
+    title: str = field(default="")
+    summary: str = field(default="")
+    tender_period_end: str = field(default="")
 
 
 @dataclass(slots=True)
@@ -74,7 +78,20 @@ class Storage:
         self._conn = sqlite3.connect(db_path)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        """Apply backwards-compatible schema migrations."""
+        for col, typedef in [
+            ("title", "TEXT"),
+            ("summary", "TEXT"),
+            ("tender_period_end", "TEXT"),
+        ]:
+            with contextlib.suppress(sqlite3.OperationalError):
+                self._conn.execute(
+                    f"ALTER TABLE seen_tenders ADD COLUMN {col} {typedef}"
+                )
 
     # ── lifecycle ───────────────────────────────────────────────────────────
     def close(self) -> None:
@@ -137,13 +154,36 @@ class Storage:
         now = datetime.now(UTC).isoformat()
         self._conn.executemany(
             "INSERT INTO seen_tenders "
-            "(tender_id, public_id, category, status, first_seen, reported_at) "
-            "VALUES (?, ?, ?, ?, ?, ?) "
+            "(tender_id, public_id, category, status, title, summary, tender_period_end, "
+            " first_seen, reported_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(tender_id) DO UPDATE SET "
-            "  status = excluded.status, reported_at = excluded.reported_at",
-            [(r.tender_id, r.public_id, r.category, r.status, now, now) for r in records],
+            "  status = excluded.status, reported_at = excluded.reported_at, "
+            "  title = excluded.title, summary = excluded.summary, "
+            "  tender_period_end = excluded.tender_period_end",
+            [
+                (
+                    r.tender_id, r.public_id, r.category, r.status,
+                    r.title, r.summary, r.tender_period_end or None,
+                    now, now,
+                )
+                for r in records
+            ],
         )
         self._conn.commit()
+
+    def get_deadline_reminders(self, days_ahead: int) -> list[dict[str, str]]:
+        """Return seen tenders whose submission deadline falls within the next *days_ahead* days."""
+        now = datetime.now(UTC)
+        cutoff = (now + timedelta(days=days_ahead)).isoformat()
+        rows = self._conn.execute(
+            "SELECT public_id, title, category, summary, tender_period_end "
+            "FROM seen_tenders "
+            "WHERE tender_period_end IS NOT NULL "
+            "  AND tender_period_end >= ? AND tender_period_end <= ?",
+            (now.isoformat(), cutoff),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     def clear_seen(self) -> int:
         """Delete all persisted deduplication records (seen tenders).

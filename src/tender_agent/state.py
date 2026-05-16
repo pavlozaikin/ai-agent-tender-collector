@@ -48,6 +48,7 @@ class PipelineState(TypedDict, total=False):
     prefiltered: list[Tender]  # prefilter: passed the broad CPV/keyword net
     classified: list[ClassifiedTender]  # classify: LLM-confirmed relevant
     new_tenders: list[ClassifiedTender]  # dedupe: not previously reported
+    deadline_reminders: list[dict[str, str]]  # deadline_check: approaching tenderPeriod.endDate
     report_subject: str  # render: email subject
     report_html: str  # render: full HTML report (saved to disk + used for PDF)
     report_summary: str  # render: plain-text email body

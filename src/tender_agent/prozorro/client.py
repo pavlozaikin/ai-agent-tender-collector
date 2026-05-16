@@ -169,7 +169,8 @@ class ProzorroClient:
         # race conditions where a tender moved out of ACTIONABLE_STATUSES between
         # the feed scan and the detail fetch.
         tenders = [
-            t for t in await self._fetch_details(all_actionable_ids)
+            t
+            for t in await self._fetch_details(all_actionable_ids)
             if t.status in ACTIONABLE_STATUSES
         ]
 

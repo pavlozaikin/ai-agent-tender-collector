@@ -51,6 +51,7 @@ def _render_summary(
     total: int,
     date_str: str,
     hour: int,
+    reminders: list[dict[str, str]],
 ) -> str:
     greeting = _time_greeting(hour)
     lines = [
@@ -63,6 +64,14 @@ def _render_summary(
         label = section["label"]
         tenders = section["tenders"]
         lines.append(f"  • {label} — {len(tenders)}")  # type: ignore[arg-type]
+    if reminders:
+        lines += [
+            "",
+            f"⚠ Дедлайн подачі пропозицій наближається для {len(reminders)} тендерів:",
+        ]
+        for r in reminders:
+            deadline = _format_end_date(r.get("tender_period_end", ""))
+            lines.append(f"  • {r.get('title', r.get('public_id', ''))} — до {deadline}")
     lines += [
         "",
         "Детальний звіт із описами та аналітикою додається у вкладеному PDF-файлі.",
@@ -73,16 +82,22 @@ def _render_summary(
     return "\n".join(lines)
 
 
-def render_report(items: list[ClassifiedTender], generated_at: datetime) -> RenderedReport:
+def render_report(
+    items: list[ClassifiedTender],
+    generated_at: datetime,
+    reminders: list[dict[str, str]] | None = None,
+) -> RenderedReport:
     """Group *items* by category and render the HTML report.
 
     Args:
         items: Classified (relevant) tenders, each with a populated ``summary``.
         generated_at: Timestamp for the report header and subject line.
+        reminders: Previously reported tenders with an approaching submission deadline.
 
     Returns:
         A :class:`RenderedReport` with the email subject, HTML body, and plain-text summary.
     """
+    reminders = reminders or []
     date_str = generated_at.strftime("%d.%m.%Y")
     subject = f"{len(items)} нових тендерів знайдено станом на {date_str}"
 
@@ -92,7 +107,7 @@ def render_report(items: list[ClassifiedTender], generated_at: datetime) -> Rend
         bucket = item.category if item.category in grouped else "other"
         grouped[bucket].append(item)
 
-    sections = [
+    sections: list[dict[str, object]] = [
         {"label": CATEGORY_LABELS[key], "tenders": tenders}
         for key, tenders in grouped.items()
         if tenders
@@ -104,9 +119,15 @@ def render_report(items: list[ClassifiedTender], generated_at: datetime) -> Rend
         total=len(items),
         generated_at=generated_at,
         date_str=date_str,
+        reminders=reminders,
     )
 
-    summary = _render_summary(sections, len(items), date_str, generated_at.hour)
+    summary = _render_summary(sections, len(items), date_str, generated_at.hour, reminders)
 
-    log.info("report rendered", total_tenders=len(items), sections=len(sections))
+    log.info(
+        "report rendered",
+        total_tenders=len(items),
+        sections=len(sections),
+        reminders=len(reminders),
+    )
     return RenderedReport(subject=subject, html=html, summary=summary)

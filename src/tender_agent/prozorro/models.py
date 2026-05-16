@@ -83,8 +83,14 @@ class Tender(_Lenient):
 
     def delivery_window(self) -> tuple[str | None, str | None]:
         """Earliest startDate and latest endDate across all items' deliveryDate."""
-        starts = [i.deliveryDate.startDate for i in self.items if i.deliveryDate and i.deliveryDate.startDate]
-        ends = [i.deliveryDate.endDate for i in self.items if i.deliveryDate and i.deliveryDate.endDate]
+        starts = [
+            i.deliveryDate.startDate
+            for i in self.items
+            if i.deliveryDate and i.deliveryDate.startDate
+        ]
+        ends = [
+            i.deliveryDate.endDate for i in self.items if i.deliveryDate and i.deliveryDate.endDate
+        ]
         return (min(starts) if starts else None, max(ends) if ends else None)
 
     def classification_codes(self) -> list[str]:

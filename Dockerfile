@@ -23,10 +23,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Bundle the default (non-secret) config.
 COPY config ./config
 
-# Run as a non-root user; data dir is a mounted volume.
+# Run as a non-root user; /data is the mounted volume for the DB and reports.
 RUN useradd --create-home --uid 10001 appuser \
-    && mkdir -p /app/data \
-    && chown -R appuser:appuser /app
+    && mkdir -p /app/data /data \
+    && chown -R appuser:appuser /app /data
 USER appuser
 
 HEALTHCHECK --interval=5m --timeout=10s --start-period=20s --retries=3 \

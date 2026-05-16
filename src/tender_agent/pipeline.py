@@ -119,6 +119,13 @@ def _save_report(ctx: PipelineContext, html: str, pdf: bytes, generated_at: date
     return html_path
 
 
+async def _deadline_check(ctx: PipelineContext, state: PipelineState) -> dict[str, object]:
+    """Query the DB for previously reported tenders whose deadline is approaching."""
+    reminders = ctx.storage.get_deadline_reminders(ctx.settings.deadline_reminder_days)
+    _log.info("deadline_check_node", reminders=len(reminders))
+    return {"deadline_reminders": reminders}
+
+
 async def _render(ctx: PipelineContext, state: PipelineState) -> dict[str, object]:
     """Generate Ukrainian summaries, render the HTML report, and convert to PDF."""
     new = state.get("new_tenders", [])
@@ -130,7 +137,8 @@ async def _render(ctx: PipelineContext, state: PipelineState) -> dict[str, objec
 
     await asyncio.gather(*(summarize_one(c) for c in new))
     generated_at = datetime.now(ZoneInfo(ctx.settings.timezone))
-    report = render_report(new, generated_at)
+    reminders = state.get("deadline_reminders", [])
+    report = render_report(new, generated_at, reminders=reminders)
     pdf_bytes = render_pdf(report.html)
     path = _save_report(ctx, report.html, pdf_bytes, generated_at)
     _log.info("render_node", tenders=len(new), report_path=str(path))
@@ -175,6 +183,13 @@ async def _persist(ctx: PipelineContext, state: PipelineState) -> dict[str, obje
             public_id=c.tender.public_id,
             category=c.category,
             status=c.tender.status or "",
+            title=c.tender.title or "",
+            summary=c.summary,
+            tender_period_end=(
+                c.tender.tenderPeriod.endDate
+                if c.tender.tenderPeriod and c.tender.tenderPeriod.endDate
+                else ""
+            ),
         )
         for c in new
     ]
@@ -196,6 +211,7 @@ def build_graph(ctx: PipelineContext) -> Any:
     graph.add_node("prefilter", partial(_prefilter, ctx))
     graph.add_node("classify", partial(_classify, ctx))
     graph.add_node("dedupe", partial(_dedupe, ctx))
+    graph.add_node("deadline_check", partial(_deadline_check, ctx))
     graph.add_node("render", partial(_render, ctx))
     graph.add_node("notify", partial(_notify, ctx))
     graph.add_node("persist", partial(_persist, ctx))
@@ -204,13 +220,20 @@ def build_graph(ctx: PipelineContext) -> Any:
     graph.add_edge("crawl", "prefilter")
     graph.add_edge("prefilter", "classify")
     graph.add_edge("classify", "dedupe")
+    graph.add_edge("dedupe", "deadline_check")
 
-    def route_after_dedupe(state: PipelineState) -> str:
-        has_work = bool(state.get("new_tenders")) or ctx.settings.send_when_empty
+    def route_after_deadline_check(state: PipelineState) -> str:
+        has_work = (
+            bool(state.get("new_tenders"))
+            or bool(state.get("deadline_reminders"))
+            or ctx.settings.send_when_empty
+        )
         return "render" if has_work else "persist"
 
     graph.add_conditional_edges(
-        "dedupe", route_after_dedupe, {"render": "render", "persist": "persist"}
+        "deadline_check",
+        route_after_deadline_check,
+        {"render": "render", "persist": "persist"},
     )
     graph.add_edge("render", "notify")
     graph.add_edge("notify", "persist")

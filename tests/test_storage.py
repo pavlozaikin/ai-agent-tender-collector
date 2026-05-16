@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from tender_agent.storage import SeenRecord, Storage, UsageRecord
 
 
@@ -55,6 +57,50 @@ def test_usage_rollup_aggregates(storage: Storage) -> None:
 
 def test_usage_rollup_empty(storage: Storage) -> None:
     assert storage.usage_rollup() == []
+
+
+def test_mark_reported_stores_new_fields(storage: Storage) -> None:
+    record = SeenRecord(
+        tender_id="t1",
+        public_id="UA-t1",
+        category="coolant",
+        status="active",
+        title="Антифриз для автопарку",
+        summary="Закупівля охолоджувальної рідини на 200 л.",
+        tender_period_end="2026-05-20T12:00:00+00:00",
+    )
+    storage.mark_reported([record])
+    row = storage._conn.execute(
+        "SELECT title, summary, tender_period_end FROM seen_tenders WHERE tender_id = ?", ("t1",)
+    ).fetchone()
+    assert row["title"] == "Антифриз для автопарку"
+    assert row["summary"] == "Закупівля охолоджувальної рідини на 200 л."
+    assert row["tender_period_end"] == "2026-05-20T12:00:00+00:00"
+
+
+def test_get_deadline_reminders_within_window(storage: Storage) -> None:
+    now = datetime.now(UTC)
+    soon = (now + timedelta(days=2)).isoformat()
+    far = (now + timedelta(days=10)).isoformat()
+    past = (now - timedelta(days=1)).isoformat()
+
+    storage.mark_reported([
+        SeenRecord("t-soon", "UA-soon", "coolant", "active", "Soon tender", "Summary A", soon),
+        SeenRecord("t-far", "UA-far", "motor_oil", "active", "Far tender", "Summary B", far),
+        SeenRecord("t-past", "UA-past", "brake_fluid", "active", "Past tender", "Summary C", past),
+        SeenRecord("t-none", "UA-none", "washer_fluid", "active", "No deadline", "", ""),
+    ])
+
+    reminders = storage.get_deadline_reminders(days_ahead=3)
+    ids = {r["public_id"] for r in reminders}
+    assert "UA-soon" in ids
+    assert "UA-far" not in ids
+    assert "UA-past" not in ids
+    assert "UA-none" not in ids
+
+
+def test_get_deadline_reminders_empty(storage: Storage) -> None:
+    assert storage.get_deadline_reminders(days_ahead=3) == []
 
 
 def test_clear_seen_deletes_all_seen_rows(storage: Storage) -> None:

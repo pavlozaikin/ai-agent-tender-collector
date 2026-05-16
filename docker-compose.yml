@@ -1,19 +1,35 @@
 services:
+  # ── Database volume owner ─────────────────────────────────────────────────
+  # Lightweight container that owns the named volume.
+  # Use `docker compose exec db sqlite3 /data/tender_agent.db` for admin.
+  db:
+    image: alpine:3.21
+    container_name: tender-db
+    restart: unless-stopped
+    volumes:
+      - tender-data:/data
+    command: ["sleep", "infinity"]
+
+  # ── Agent (scheduler) ─────────────────────────────────────────────────────
   tender-agent:
     build: .
     image: tender-agent:latest
     container_name: tender-agent
     restart: unless-stopped
+    depends_on:
+      - db
     env_file:
       - .env
+    environment:
+      # DB and reports live on the shared volume at /data.
+      - DATA_DIR=/data
     volumes:
-      # Persistent SQLite database + rendered reports.
-      - tender-data:/app/data
+      # Shared data volume with the db service.
+      - tender-data:/data
       # Recipient list — edit on the host, the agent reloads it each run.
       - ./recipients.yaml:/app/recipients.yaml:ro
       # Prefilter config — edit on the host without rebuilding the image.
       - ./config/filters.yaml:/app/config/filters.yaml:ro
-    # Default command (`schedule`) is defined in the Dockerfile.
 
 volumes:
   tender-data:

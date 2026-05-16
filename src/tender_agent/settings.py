@@ -46,13 +46,14 @@ class Settings(BaseSettings):
     smtp_from: str = ""
 
     # ── Schedule ────────────────────────────────────────────────────────────
-    schedule_cron: str = "0 8 * * *"
+    schedule_cron: str = "0 8 * * 1-5"
     timezone: str = "Europe/Kyiv"
     send_when_empty: bool = False
+    deadline_reminder_days: int = 3
 
     # ── Crawling ────────────────────────────────────────────────────────────
     prozorro_api_base: str = "https://public-api.prozorro.gov.ua/api/2.5"
-    crawl_lookback_days: int = 3
+    crawl_lookback_days: int = 1
     request_timeout_seconds: float = 30.0
     max_retries: int = 4
 
