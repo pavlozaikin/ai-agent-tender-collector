@@ -298,15 +298,6 @@ config/
 
 ---
 
-## Security
-
-- All secrets live in `.env`, which is listed in `.gitignore` and must never be committed.
-- `recipients.yaml`, the `data/` directory, and the SQLite database are also excluded from version control.
-- The Docker image runs as an unprivileged user.
-- Before your first commit, verify with `git status` that `.env`, `recipients.yaml`, and `data/` do not appear as tracked files.
-
----
-
 ## Roadmap
 
 - **Additional procurement platforms** — Zakupki.prom.ua, SmartTender, e-tender for private-sector tenders. The architecture already isolates the data source inside the `prozorro/` module, making new adapters straightforward.
