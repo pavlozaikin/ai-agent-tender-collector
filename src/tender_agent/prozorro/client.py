@@ -124,7 +124,7 @@ class ProzorroClient:
         all_actionable_ids: list[str] = []
         pages_fetched = 0
 
-        _log.info("prozorro_crawl_start", offset=current_offset)
+        _log.info("crawl_started", offset=current_offset)
 
         while True:
             if pages_fetched >= _MAX_FEED_PAGES:
@@ -148,9 +148,9 @@ class ProzorroClient:
             all_actionable_ids.extend(e.id for e in actionable)
 
             _log.info(
-                "prozorro_feed_page",
+                "feed_page_fetched",
                 page=pages_fetched,
-                entries=len(page.data),
+                count=len(page.data),
                 actionable=len(actionable),
                 next_offset=next_offset_str,
             )
@@ -243,6 +243,7 @@ class ProzorroClient:
                 if tender is None:
                     _log.warning("prozorro_tender_not_found", tender_id=tid)
                     return
+                _log.info("tender_fetched", tender_id=tender.id, title=tender.title or "—")
                 async with lock:
                     results.append(tender)
 

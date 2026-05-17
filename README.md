@@ -159,6 +159,44 @@ Only the keys for providers you actually use are required.
 | `FILTERS_PATH` | `config/filters.yaml` | Path to the CPV + keyword prefilter configuration. |
 | `RECIPIENTS_PATH` | `recipients.yaml` | Path to the recipients file. |
 | `LOG_LEVEL` | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |
+| `LOG_FILE_ENABLED` | `true` | Write a structured JSON Lines log to `{DATA_DIR}/tender-agent.jsonl`. Set to `false` to disable the file sink. |
+
+---
+
+## Logging
+
+Every run produces two interleaved output streams on the console:
+
+- **Technical log lines** — standard structured log messages (level, logger name, message).
+- **Human-readable summary lines** — plain-English status updates tagged `audience="human"`, designed to be readable at a glance without log-parsing skills.
+
+### JSON Lines log file
+
+When `LOG_FILE_ENABLED=true` (the default), every log line is also written to `data/tender-agent.jsonl` as a single JSON object. The file sits alongside the database and reports inside `DATA_DIR`. Rotation kicks in at 5 MB with 5 backups kept.
+
+This file is useful for post-run audits, feeding into log aggregators, or debugging a specific run without re-running the pipeline.
+
+### Run-status summaries
+
+Each run ends with one of the following plain-English summary lines printed to the console:
+
+```
+Run finished successfully. Crawled 120 tender(s), 3 new. Email sent.
+Run finished — no email sent. Crawled 120 tender(s) but found nothing new to report.
+Run finished with degraded results — the AI model failed during the run. Crawled 120 tender(s). Report may be incomplete.
+```
+
+### Error classification
+
+LLM API errors (rate limits, quota exceeded, authentication failure, timeouts, connection errors) are classified and logged with a plain-English explanation before the fallback model is tried. Example:
+
+```
+The OpenAI API is temporarily rate-limited — too many requests. Will retry with the backup model.
+```
+
+### Per-tender detail
+
+Each tender fetched from the PROZORRO feed is logged at `INFO` level (`tender_fetched` event with tender `id` and `title`). Set `LOG_LEVEL=DEBUG` to see the full response payload.
 
 ---
 

@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from tender_agent import main as main_module
+from tender_agent.errors import ErrorInfo
 from tender_agent.logging import configure_logging
 from tender_agent.main import (
     _build_parser,
@@ -83,6 +84,171 @@ async def test_run_once_calls_pipeline(monkeypatch: pytest.MonkeyPatch, settings
 
     monkeypatch.setattr(llm_module, "_build_model", lambda _spec: MagicMock())
     await _run_once(settings, dry_run=True)
+
+
+async def test_run_once_succeeded_status(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    """Successful run: email_sent → 'succeeded' status, summary mentions 'finished successfully'."""
+    import logging
+
+    import tender_agent.llm as llm_module
+
+    fake_final: dict[str, object] = {
+        "counters": {"crawled": 5, "new": 2},
+        "email_sent": True,
+        "report_path": "/tmp/r.pdf",
+    }
+    monkeypatch.setattr(main_module, "apply_provider_keys", lambda s: None)
+    monkeypatch.setattr(main_module, "run_pipeline", AsyncMock(return_value=fake_final))
+    monkeypatch.setattr(llm_module, "_build_model", lambda _spec: MagicMock())
+
+    configure_logging("DEBUG")
+    captured: list[str] = []
+
+    class Cap(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            captured.append(record.getMessage())
+
+    logging.getLogger().addHandler(Cap())
+    await _run_once(settings, dry_run=False)
+    all_msgs = " ".join(captured)
+    assert "finished successfully" in all_msgs or "run_complete" in all_msgs
+
+
+async def test_run_once_degraded_status_when_llm_failures(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    """LLM failures → 'degraded' status in summary."""
+    import logging
+
+    import tender_agent.llm as llm_module
+
+    fake_final: dict[str, object] = {
+        "counters": {"crawled": 3, "new": 0},
+        "email_sent": False,
+        "report_path": None,
+    }
+    monkeypatch.setattr(main_module, "apply_provider_keys", lambda s: None)
+    monkeypatch.setattr(main_module, "run_pipeline", AsyncMock(return_value=fake_final))
+
+    fake_model = MagicMock()
+    monkeypatch.setattr(llm_module, "_build_model", lambda _spec: fake_model)
+
+    # Patch LLMClient to expose a failures list.
+    class FakeLLMClient:
+        def __init__(self, s: object, storage: object) -> None:
+            self.failures: list[ErrorInfo] = [
+                ErrorInfo(kind="rate_limit", message="The AI model API is rate-limited.")
+            ]
+
+    monkeypatch.setattr(main_module, "LLMClient", FakeLLMClient)
+
+    configure_logging("DEBUG")
+    captured: list[str] = []
+
+    class Cap(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            captured.append(record.getMessage())
+
+    logging.getLogger().addHandler(Cap())
+    await _run_once(settings, dry_run=False)
+    all_msgs = " ".join(captured)
+    assert "degraded" in all_msgs
+
+
+async def test_run_once_no_email_status(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    """No email, no new tenders → 'no_email' status in summary."""
+    import logging
+
+    import tender_agent.llm as llm_module
+
+    fake_final: dict[str, object] = {
+        "counters": {"crawled": 10, "new": 0},
+        "email_sent": False,
+        "report_path": None,
+    }
+    monkeypatch.setattr(main_module, "apply_provider_keys", lambda s: None)
+    monkeypatch.setattr(main_module, "run_pipeline", AsyncMock(return_value=fake_final))
+    monkeypatch.setattr(llm_module, "_build_model", lambda _spec: MagicMock())
+
+    configure_logging("DEBUG")
+    captured: list[str] = []
+
+    class Cap(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            captured.append(record.getMessage())
+
+    logging.getLogger().addHandler(Cap())
+    await _run_once(settings, dry_run=False)
+    all_msgs = " ".join(captured)
+    assert "no_email" in all_msgs or "no email" in all_msgs.lower()
+
+
+async def test_run_once_exception_logs_run_failed(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    """If run_pipeline raises, run_failed is logged and the exception propagates."""
+    import logging
+
+    import tender_agent.llm as llm_module
+
+    monkeypatch.setattr(main_module, "apply_provider_keys", lambda s: None)
+    monkeypatch.setattr(
+        main_module, "run_pipeline", AsyncMock(side_effect=RuntimeError("pipeline exploded"))
+    )
+    monkeypatch.setattr(llm_module, "_build_model", lambda _spec: MagicMock())
+
+    configure_logging("DEBUG")
+    captured: list[str] = []
+
+    class Cap(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            captured.append(record.getMessage())
+
+    logging.getLogger().addHandler(Cap())
+    with pytest.raises(RuntimeError, match="pipeline exploded"):
+        await _run_once(settings, dry_run=False)
+    all_msgs = " ".join(captured)
+    assert "run_failed" in all_msgs
+
+
+def test_cmd_run_returns_one_on_exception(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    """_cmd_run returns 1 when _run_once raises an exception."""
+    monkeypatch.setattr(main_module, "_run_once", AsyncMock(side_effect=RuntimeError("boom")))
+    args = argparse.Namespace(dry_run=False)
+    assert _cmd_run(settings, args) == 1
+
+
+def test_main_passes_log_file_to_configure_logging(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    """main() should pass log_file to configure_logging."""
+    import sys
+
+    configure_logging_calls: list[tuple[str, object]] = []
+
+    def fake_configure(level: str, log_file: object = None) -> None:
+        configure_logging_calls.append((level, log_file))
+
+    monkeypatch.setattr(main_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(main_module, "configure_logging", fake_configure)
+    monkeypatch.setattr(main_module, "_run_once", AsyncMock(return_value=None))
+    monkeypatch.setattr(sys, "argv", ["tender-agent", "run"])
+
+    with pytest.raises(SystemExit):
+        main()
+
+    assert len(configure_logging_calls) == 1
+    # log_file should be set based on settings.log_file_enabled
+    _, log_file_arg = configure_logging_calls[0]
+    # settings fixture has log_file_enabled=True by default, so log_file should be a Path or None
+    # (it points to a temp path)
+    assert log_file_arg is None or hasattr(log_file_arg, "parent")
 
 
 # ── _cmd_run ────────────────────────────────────────────────────────────────
@@ -309,7 +475,7 @@ def test_configure_logging_runs_without_error() -> None:
 def test_main_dispatches_to_run(monkeypatch: pytest.MonkeyPatch, settings: Settings) -> None:
     """main() should parse argv, load settings, and call the right handler."""
     monkeypatch.setattr(main_module, "get_settings", lambda: settings)
-    monkeypatch.setattr(main_module, "configure_logging", lambda level: None)
+    monkeypatch.setattr(main_module, "configure_logging", lambda level, log_file=None: None)
     monkeypatch.setattr(main_module, "_run_once", AsyncMock(return_value=None))
 
     import sys

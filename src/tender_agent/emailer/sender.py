@@ -86,6 +86,7 @@ class EmailSender:
     def _connect(self) -> smtplib.SMTP:
         """Open and return an SMTP connection per the configured security mode."""
         s = self._settings
+        log.info("smtp_connecting", host=s.smtp_host, port=s.smtp_port, security=s.smtp_security)
         if s.smtp_security == "ssl":
             return smtplib.SMTP_SSL(s.smtp_host, s.smtp_port)
         conn = smtplib.SMTP(s.smtp_host, s.smtp_port)

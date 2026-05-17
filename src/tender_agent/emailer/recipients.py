@@ -85,5 +85,6 @@ def load_recipients(path: Path) -> Recipients:
     _validate_addresses("cc", cc)
     _validate_addresses("bcc", bcc)
 
-    log.info("recipients loaded", to=len(to), cc=len(cc), bcc=len(bcc))
-    return Recipients(to=to, cc=cc, bcc=bcc)
+    recipients = Recipients(to=to, cc=cc, bcc=bcc)
+    log.info("recipients_loaded", count=len(to) + len(cc) + len(bcc))
+    return recipients

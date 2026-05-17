@@ -147,6 +147,59 @@ async def test_classify_returns_default_when_all_models_fail(
     assert result.category == "other"
 
 
+async def test_failures_tracked_after_primary_fails(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings, storage: Storage
+) -> None:
+    """After primary failure, LLMClient.failures has one entry with a valid kind."""
+    verdict = TenderRelevance(relevant=True, category="motor_oil", reason="олива")
+    models = iter(
+        [
+            FakeChatModel(fail=True),  # classify primary fails
+            FakeChatModel(parsed=verdict),  # classify backup succeeds
+            FakeChatModel(),  # report primary
+            FakeChatModel(),  # report backup
+        ]
+    )
+    monkeypatch.setattr(llm_module, "_build_model", lambda _spec: next(models))
+    client = LLMClient(settings, storage)
+    await client.classify(make_tender())
+    assert len(client.failures) == 1
+    assert client.failures[0].kind != ""
+    assert client.failures[0].message != ""
+
+
+async def test_failures_tracked_when_both_models_fail(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings, storage: Storage
+) -> None:
+    """When both primary and backup fail, failures has two entries."""
+    monkeypatch.setattr(llm_module, "_build_model", lambda _spec: FakeChatModel(fail=True))
+    client = LLMClient(settings, storage)
+    await client.classify(make_tender())
+    assert len(client.failures) == 2
+
+
+async def test_failures_tracked_for_text_role(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings, storage: Storage
+) -> None:
+    """_run_text failures are also appended to LLMClient.failures."""
+    monkeypatch.setattr(llm_module, "_build_model", lambda _spec: FakeChatModel(fail=True))
+    client = LLMClient(settings, storage)
+    await client.summarize(make_tender())
+    # Both primary and backup fail for the report role.
+    assert len(client.failures) == 2
+
+
+async def test_failures_empty_on_success(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings, storage: Storage
+) -> None:
+    """No failures logged when all models succeed."""
+    verdict = TenderRelevance(relevant=False, category="other", reason="тест")
+    monkeypatch.setattr(llm_module, "_build_model", lambda _spec: FakeChatModel(parsed=verdict))
+    client = LLMClient(settings, storage)
+    await client.classify(make_tender())
+    assert client.failures == []
+
+
 async def test_summarize_returns_empty_when_all_models_fail(
     monkeypatch: pytest.MonkeyPatch, settings: Settings, storage: Storage
 ) -> None:

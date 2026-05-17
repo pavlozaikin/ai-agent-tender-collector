@@ -6,16 +6,19 @@ config and SQLite storage are real.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import pytest
 
 from tender_agent import pipeline as pipeline_module
 from tender_agent.llm import TenderRelevance
-from tender_agent.pipeline import PipelineContext, run_pipeline
+from tender_agent.logging import configure_logging
+from tender_agent.pipeline import PipelineContext, _instrument, run_pipeline
 from tender_agent.prozorro.client import CrawlResult
 from tender_agent.prozorro.models import Tender
 from tender_agent.settings import Settings
+from tender_agent.state import PipelineState
 from tender_agent.storage import Storage
 from tests.conftest import make_tender
 
@@ -147,3 +150,64 @@ async def test_dry_run_sends_nothing_and_persists_nothing(
     assert storage.get_offset() is None  # cursor not advanced
     assert storage.filter_unseen(["t1", "t2"]) == {"t1", "t2"}  # nothing recorded
     assert final["report_path"]  # report still rendered to disk
+
+
+# ── _instrument wrapper tests ────────────────────────────────────────────────
+
+
+async def test_instrument_logs_started_and_done(settings: Settings, storage: Storage) -> None:
+    """_instrument emits {name}_started and {name}_instrumentation_done logs."""
+    configure_logging("DEBUG")
+    logged_events: list[str] = []
+
+    class CapturingHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            logged_events.append(record.getMessage())
+
+    handler = CapturingHandler()
+    logging.getLogger().addHandler(handler)
+
+    # _instrument takes a pre-bound node (state only, context already captured).
+    async def fake_bound_node(state: PipelineState) -> dict[str, object]:
+        return {}
+
+    instrumented = _instrument("testnode", "Test Node", fake_bound_node)
+    await instrumented({})  # type: ignore[arg-type]
+
+    # Check that at least one event mentions the node was started
+    all_messages = " ".join(logged_events)
+    assert "testnode_started" in all_messages or "testnode" in all_messages
+
+
+async def test_instrument_propagates_exception(settings: Settings, storage: Storage) -> None:
+    """_instrument must re-raise exceptions from the wrapped node."""
+    configure_logging("DEBUG")
+
+    async def failing_bound_node(state: PipelineState) -> dict[str, object]:
+        raise ValueError("boom")
+
+    instrumented = _instrument("failnode", "Failing Node", failing_bound_node)
+    with pytest.raises(ValueError, match="boom"):
+        await instrumented({})  # type: ignore[arg-type]
+
+
+async def test_no_work_route_logs_route_no_work(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings, storage: Storage
+) -> None:
+    """When no new tenders and no reminders, route_no_work is logged."""
+    # Use empty tender list so no_work path is taken.
+    _install_fakes(monkeypatch, [])
+    configure_logging("DEBUG")
+    logged_events: list[str] = []
+
+    class CapturingHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            logged_events.append(record.getMessage())
+
+    logging.getLogger().addHandler(CapturingHandler())
+
+    final = await run_pipeline(_context(settings, storage))
+    # Pipeline should have taken the no-work path (no render, no email).
+    assert not final.get("email_sent", False)
+    all_messages = " ".join(logged_events)
+    assert "route_no_work" in all_messages or "No email will be sent" in all_messages

@@ -57,3 +57,4 @@ class PipelineState(TypedDict, total=False):
     email_sent: bool  # notify: whether an email was dispatched
     new_offset: str | None  # crawl: feed cursor to persist
     counters: dict[str, int]  # per-stage counts for logging/summary
+    errors: list[dict[str, str]]  # errors accumulated during the run (kind + message)

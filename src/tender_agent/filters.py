@@ -12,7 +12,10 @@ from pathlib import Path
 
 import yaml
 
+from tender_agent.logging import get_logger
 from tender_agent.prozorro.models import Tender
+
+_log = get_logger(__name__)
 
 
 class FiltersError(Exception):
@@ -51,4 +54,6 @@ def load_filters(path: Path) -> Filters:
     keywords = tuple(str(item).lower() for item in raw.get("keywords") or [])
     if not cpv_prefixes and not keywords:
         raise FiltersError(f"Filters file {path} defines no cpv_prefixes or keywords")
-    return Filters(cpv_prefixes=cpv_prefixes, keywords=keywords)
+    filters = Filters(cpv_prefixes=cpv_prefixes, keywords=keywords)
+    _log.info("filters_loaded", cpv_groups=len(cpv_prefixes), keywords=len(keywords))
+    return filters

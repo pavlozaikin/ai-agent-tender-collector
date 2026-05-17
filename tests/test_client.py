@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
+
 import httpx
 import pytest
 import respx
 
+from tender_agent.logging import configure_logging
 from tender_agent.prozorro.client import ProzorroClient, ProzorroError, _should_retry
 from tender_agent.settings import Settings
 
@@ -20,6 +23,51 @@ def _detail(tender_id: str, status: str = "active.tendering") -> dict[str, objec
             "items": [],
         }
     }
+
+
+@respx.mock
+async def test_crawl_logs_started_and_tender_fetched(settings: Settings) -> None:
+    """crawl_started and tender_fetched must appear in the log output."""
+    configure_logging("DEBUG")
+    captured: list[str] = []
+
+    class Cap(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            captured.append(record.getMessage())
+
+    logging.getLogger().addHandler(Cap())
+
+    page1 = {
+        "data": [{"id": "t-log", "status": "active.tendering"}],
+        "next_page": {"offset": "cursor-log"},
+    }
+    page2: dict[str, object] = {"data": [], "next_page": {"offset": "cursor-log"}}
+
+    respx.get(path="/api/2.5/tenders").mock(
+        side_effect=[httpx.Response(200, json=page1), httpx.Response(200, json=page2)]
+    )
+    respx.get(path__regex=r"^/api/2\.5/tenders/.+$").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": {
+                    "id": "t-log",
+                    "tenderID": "UA-T-LOG",
+                    "status": "active.tendering",
+                    "title": "Закупівля антифризу",
+                    "items": [],
+                }
+            },
+        )
+    )
+
+    async with ProzorroClient(settings) as client:
+        result = await client.crawl(offset=None)
+
+    assert len(result.tenders) == 1
+    all_msgs = " ".join(captured)
+    assert "crawl_started" in all_msgs
+    assert "tender_fetched" in all_msgs
 
 
 @respx.mock

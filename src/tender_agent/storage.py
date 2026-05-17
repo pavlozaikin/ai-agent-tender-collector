@@ -10,6 +10,10 @@ from pathlib import Path
 from types import TracebackType
 from typing import Any
 
+from tender_agent.logging import get_logger
+
+_log = get_logger(__name__)
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS crawl_state (
     key   TEXT PRIMARY KEY,
@@ -80,6 +84,7 @@ class Storage:
         self._conn.executescript(_SCHEMA)
         self._migrate()
         self._conn.commit()
+        _log.debug("storage_opened", db_path=str(db_path))
 
     def _migrate(self) -> None:
         """Apply backwards-compatible schema migrations."""
@@ -90,6 +95,7 @@ class Storage:
         ]:
             with contextlib.suppress(sqlite3.OperationalError):
                 self._conn.execute(f"ALTER TABLE seen_tenders ADD COLUMN {col} {typedef}")
+        _log.info("storage_migrated")
 
     # ── lifecycle ───────────────────────────────────────────────────────────
     def close(self) -> None:
@@ -196,7 +202,9 @@ class Storage:
         """
         cur = self._conn.execute("DELETE FROM seen_tenders")
         self._conn.commit()
-        return int(cur.rowcount)
+        deleted = int(cur.rowcount)
+        _log.info("seen_tenders_cleared", deleted=deleted)
+        return deleted
 
     # ── LLM usage statistics ────────────────────────────────────────────────
     def record_usage(self, usage: UsageRecord) -> None:

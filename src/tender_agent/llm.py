@@ -21,7 +21,8 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
 from pydantic import BaseModel, Field
 
-from tender_agent.logging import get_logger
+from tender_agent.errors import ErrorInfo, classify_llm_error
+from tender_agent.logging import get_logger, narrate
 from tender_agent.prozorro.models import Tender
 from tender_agent.settings import Settings
 from tender_agent.state import CATEGORIES
@@ -172,12 +173,18 @@ class LLMClient:
 
     def __init__(self, settings: Settings, storage: Storage) -> None:
         self._storage = storage
+        self._failures: list[ErrorInfo] = []
         self._classify = self._make_role(
             "classify", settings.llm_classify_primary, settings.llm_classify_backup
         )
         self._report = self._make_role(
             "report", settings.llm_report_primary, settings.llm_report_backup
         )
+
+    @property
+    def failures(self) -> list[ErrorInfo]:
+        """Classified errors that occurred during LLM calls in this client's lifetime."""
+        return self._failures
 
     @staticmethod
     def _make_role(name: str, primary: str, backup: str) -> _Role:
@@ -227,15 +234,22 @@ class LLMClient:
                 parsed = out.get("parsed")
                 if parsed is None:
                     raise ValueError("structured output returned no parsed result")
+                _log.debug(
+                    "llm_call_succeeded", role=role.name, model=spec.model, fallback=is_fallback
+                )
                 return cast(_T, parsed)
             except Exception as exc:  # noqa: BLE001 - fall back to the backup model
+                err = classify_llm_error(exc)
                 _log.warning(
                     "llm_call_failed",
                     role=role.name,
                     model=spec.model,
                     fallback=is_fallback,
+                    error_kind=err.kind,
                     error=str(exc),
                 )
+                narrate(_log, err.message, level="warning", role=role.name, model=spec.model)
+                self._failures.append(err)
         return default
 
     async def _run_text(self, role: _Role, system: str, user: str) -> str:
@@ -245,15 +259,22 @@ class LLMClient:
                 message = await model.ainvoke(messages)
                 self._record(role.name, spec, message, is_fallback)
                 content = message.content
+                _log.debug(
+                    "llm_call_succeeded", role=role.name, model=spec.model, fallback=is_fallback
+                )
                 return content.strip() if isinstance(content, str) else str(content)
             except Exception as exc:  # noqa: BLE001 - fall back to the backup model
+                err = classify_llm_error(exc)
                 _log.warning(
                     "llm_call_failed",
                     role=role.name,
                     model=spec.model,
                     fallback=is_fallback,
+                    error_kind=err.kind,
                     error=str(exc),
                 )
+                narrate(_log, err.message, level="warning", role=role.name, model=spec.model)
+                self._failures.append(err)
         return ""
 
     def _record(

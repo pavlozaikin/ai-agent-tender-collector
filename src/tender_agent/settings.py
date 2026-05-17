@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     filters_path: Path = Path("config/filters.yaml")
     recipients_path: Path = Path("recipients.yaml")
     log_level: str = "INFO"
+    log_file_enabled: bool = True
+
+    @property
+    def log_file(self) -> Path | None:
+        """Path to the JSONL log file; None when file logging is disabled."""
+        return self.data_dir / "tender-agent.jsonl" if self.log_file_enabled else None
 
     @property
     def db_path(self) -> Path:

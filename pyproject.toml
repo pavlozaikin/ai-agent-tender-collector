@@ -73,4 +73,4 @@ addopts = "--cov=tender_agent --cov-report=term-missing"
 source = ["src/tender_agent"]
 
 [tool.coverage.report]
-fail_under = 85
+fail_under = 97
