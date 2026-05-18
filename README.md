@@ -18,7 +18,7 @@ An AI agent that crawls the Ukrainian public procurement platform **PROZORRO** d
 - **LLM usage accounting** — every API call is logged to a `llm_usage` table (tokens + estimated cost).
 - **Docker-first** — two-service Compose setup with a dedicated volume-owner container for safe SQLite access.
 
-**Monitored categories:**
+**Default monitored categories** (configurable via `config/filters.yaml` — no code changes needed):
 
 | Category | Examples |
 |---|---|
@@ -301,5 +301,3 @@ config/
 ## Roadmap
 
 - **Additional procurement platforms** — Zakupki.prom.ua, SmartTender, e-tender for private-sector tenders. The architecture already isolates the data source inside the `prozorro/` module, making new adapters straightforward.
-- **Deadline reminders** — implemented: tenders with approaching submission deadlines are surfaced at the top of each report.
-- **Configurable tender categories** — extend coverage to other supply categories without code changes.

@@ -43,10 +43,36 @@ def make_tender(
 
 @pytest.fixture
 def filters_file(tmp_path: Path) -> Path:
-    """A minimal filters.yaml written to a temp directory."""
+    """A minimal filters.yaml written to a temp directory (new structured format)."""
     path = tmp_path / "filters.yaml"
     path.write_text(
-        "cpv_prefixes:\n  - '0921'\n  - '2495'\nkeywords:\n  - антифриз\n  - олива\n  - гальмівн\n",
+        "domain:\n"
+        "  name_uk: автохімія\n"
+        "  classify_system_uk: Класифікатор тестовий.\n"
+        "  report_system_uk: Асистент тестовий.\n"
+        "  relevant_field_description: True only if relevant.\n"
+        "categories:\n"
+        "  coolant:\n"
+        "    label_uk: Охолоджувальні рідини / антифризи\n"
+        "    cpv_prefixes:\n"
+        "      - '2495'\n"
+        "    keywords:\n"
+        "      - антифриз\n"
+        "  motor_oil:\n"
+        "    label_uk: Моторні оливи\n"
+        "    cpv_prefixes:\n"
+        "      - '0921'\n"
+        "    keywords:\n"
+        "      - олива\n"
+        "  brake_fluid:\n"
+        "    label_uk: Гальмівні рідини\n"
+        "    cpv_prefixes: []\n"
+        "    keywords:\n"
+        "      - гальмівн\n"
+        "  other:\n"
+        "    label_uk: Інша автохімія\n"
+        "    cpv_prefixes: []\n"
+        "    keywords: []\n",
         encoding="utf-8",
     )
     return path

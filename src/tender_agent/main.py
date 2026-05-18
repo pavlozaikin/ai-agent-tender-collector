@@ -18,6 +18,7 @@ from tender_agent.emailer.pdf import render_pdf
 from tender_agent.emailer.recipients import load_recipients
 from tender_agent.emailer.sender import EmailSender
 from tender_agent.errors import describe_exception
+from tender_agent.filters import load_filters
 from tender_agent.llm import LLMClient, apply_provider_keys
 from tender_agent.logging import configure_logging, get_logger, narrate
 from tender_agent.pipeline import PipelineContext, run_pipeline
@@ -40,14 +41,20 @@ async def _run_once(settings: Settings, *, dry_run: bool) -> None:
     )
     apply_provider_keys(settings)
     try:
+        filters = load_filters(settings.filters_path)
         with Storage(settings.db_path) as storage:
-            llm = LLMClient(settings, storage)
-            ctx = PipelineContext(settings=settings, storage=storage, llm=llm, dry_run=dry_run)
+            llm = LLMClient(settings, storage, filters)
+            ctx = PipelineContext(
+                settings=settings,
+                storage=storage,
+                llm=llm,
+                filters=filters,
+                dry_run=dry_run,
+            )
             final = await run_pipeline(ctx)
         counters = final.get("counters", {})
         email_sent = final.get("email_sent", False)
         llm_degraded = bool(llm.failures)
-        # Determine run status
         if llm_degraded:
             status = "degraded"
         elif not email_sent and not dry_run and not settings.send_when_empty:
@@ -63,7 +70,6 @@ async def _run_once(settings: Settings, *, dry_run: bool) -> None:
             llm_failures=len(llm.failures),
             **counters,
         )
-        # Plain-English summary
         crawled = counters.get("crawled", 0)
         new = counters.get("new", 0)
         if status == "degraded":
@@ -211,7 +217,6 @@ def _cmd_test_send(settings: Settings, args: argparse.Namespace) -> int:
     print("Конвертуємо HTML у PDF…")
     pdf_bytes = render_pdf(html)
 
-    # Save the new PDF alongside the HTML for inspection.
     pdf_path = html_path.with_suffix(".pdf")
     pdf_path.write_bytes(pdf_bytes)
     print(f"PDF збережено: {pdf_path}")
@@ -220,10 +225,16 @@ def _cmd_test_send(settings: Settings, args: argparse.Namespace) -> int:
         print("Прапор --no-email: email не надсилається.")
         return 0
 
+    try:
+        filters = load_filters(settings.filters_path)
+        domain_name = filters.domain.name_uk
+    except Exception:  # noqa: BLE001 - fall back gracefully if filters can't be loaded
+        domain_name = "автохімії"
+
     recipients = load_recipients(settings.recipients_path)
     sender = EmailSender(settings)
     date_str = datetime.now(ZoneInfo(settings.timezone)).strftime("%d.%m.%Y")
-    subject = f"[TEST] Тендери з автохімії — {date_str}"
+    subject = f"[TEST] Тендери з {domain_name} — {date_str}"
     body = (
         "Це тестове надсилання.\n\n"
         f"PDF-звіт сформовано з файлу: {html_path.name}\n"
@@ -244,7 +255,7 @@ def _cmd_test_send(settings: Settings, args: argparse.Namespace) -> int:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tender-agent",
-        description="Collects Ukrainian automotive-chemistry tenders and emails a report.",
+        description="Collects Ukrainian procurement tenders and emails a report.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 

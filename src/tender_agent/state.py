@@ -8,20 +8,6 @@ from pydantic import BaseModel
 
 from tender_agent.prozorro.models import Tender
 
-# Automotive-chemistry categories the agent recognises, with their Ukrainian
-# labels used in the email report. "other" covers automotive chemistry that
-# does not fit a specific bucket.
-CATEGORY_LABELS: dict[str, str] = {
-    "coolant": "Охолоджувальні рідини / антифризи",
-    "brake_fluid": "Гальмівні рідини",
-    "washer_fluid": "Рідини для омивача скла",
-    "motor_oil": "Моторні оливи",
-    "industrial_oil": "Індустріальні оливи",
-    "base_oil": "Базові оливи",
-    "other": "Інша автохімія",
-}
-CATEGORIES: list[str] = list(CATEGORY_LABELS)
-
 
 class ClassifiedTender(BaseModel):
     """A tender after the LLM relevance decision."""
@@ -31,11 +17,11 @@ class ClassifiedTender(BaseModel):
     category: str
     reason: str
     summary: str = ""
+    _category_labels: dict[str, str] = {}
 
-    @property
-    def category_label(self) -> str:
-        """Ukrainian label for the assigned category."""
-        return CATEGORY_LABELS.get(self.category, CATEGORY_LABELS["other"])
+    def category_label_for(self, category_labels: dict[str, str]) -> str:
+        """Ukrainian label for the assigned category, given a label map."""
+        return category_labels.get(self.category, category_labels.get("other", self.category))
 
 
 class PipelineState(TypedDict, total=False):

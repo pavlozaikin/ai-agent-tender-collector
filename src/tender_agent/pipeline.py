@@ -22,7 +22,7 @@ from tender_agent.emailer.recipients import load_recipients
 from tender_agent.emailer.report import render_report
 from tender_agent.emailer.sender import EmailSender
 from tender_agent.errors import describe_exception
-from tender_agent.filters import load_filters
+from tender_agent.filters import Filters, load_filters
 from tender_agent.llm import LLMClient
 from tender_agent.logging import get_logger, narrate
 from tender_agent.prozorro.client import ProzorroClient
@@ -49,6 +49,7 @@ class PipelineContext:
     settings: Settings
     storage: Storage
     llm: LLMClient
+    filters: Filters | None = None
     dry_run: bool = False
 
 
@@ -116,7 +117,7 @@ async def _crawl(ctx: PipelineContext, state: PipelineState) -> dict[str, object
 
 async def _prefilter(ctx: PipelineContext, state: PipelineState) -> dict[str, object]:
     """Apply the broad CPV/keyword net before any LLM call."""
-    filters = load_filters(ctx.settings.filters_path)
+    filters = ctx.filters if ctx.filters is not None else load_filters(ctx.settings.filters_path)
     tenders = state.get("tenders", [])
     kept = [t for t in tenders if filters.matches(t)]
     _log.info("prefilter_node", kept=len(kept), total=len(tenders))
@@ -132,6 +133,8 @@ async def _prefilter(ctx: PipelineContext, state: PipelineState) -> dict[str, ob
 
 async def _classify(ctx: PipelineContext, state: PipelineState) -> dict[str, object]:
     """Let the LLM make the final relevance decision on each tender."""
+    filters = ctx.filters
+    domain_name = filters.domain.name_uk if filters is not None else "automotive chemistry"
     prefiltered = state.get("prefiltered", [])
     sem = asyncio.Semaphore(_CLASSIFY_CONCURRENCY)
 
@@ -151,7 +154,7 @@ async def _classify(ctx: PipelineContext, state: PipelineState) -> dict[str, obj
     narrate(
         _log,
         f"AI classified {len(relevant)} of {len(prefiltered)} tender(s) as relevant "
-        "for automotive chemistry.",
+        f"for {domain_name}.",
         relevant=len(relevant),
         considered=len(prefiltered),
     )
@@ -200,6 +203,10 @@ async def _deadline_check(ctx: PipelineContext, state: PipelineState) -> dict[st
 
 async def _render(ctx: PipelineContext, state: PipelineState) -> dict[str, object]:
     """Generate Ukrainian summaries, render the HTML report, and convert to PDF."""
+    filters = ctx.filters
+    category_labels = filters.category_labels if filters is not None else None
+    domain_name = filters.domain.name_uk if filters is not None else "автохімії"
+
     new = state.get("new_tenders", [])
     sem = asyncio.Semaphore(_SUMMARY_CONCURRENCY)
 
@@ -210,7 +217,13 @@ async def _render(ctx: PipelineContext, state: PipelineState) -> dict[str, objec
     await asyncio.gather(*(summarize_one(c) for c in new))
     generated_at = datetime.now(ZoneInfo(ctx.settings.timezone))
     reminders = state.get("deadline_reminders", [])
-    report = render_report(new, generated_at, reminders=reminders)
+    report = render_report(
+        new,
+        generated_at,
+        reminders=reminders,
+        category_labels=category_labels,
+        domain_name=domain_name,
+    )
     pdf_bytes = render_pdf(report.html)
     path = _save_report(ctx, report.html, pdf_bytes, generated_at)
     _log.info("render_node", tenders=len(new), report_path=str(path))

@@ -1,5 +1,5 @@
 # ============================================================================
-#  Prefilter configuration — the BROAD, deliberately over-inclusive net.
+#  Prefilter and domain configuration.
 #
 #  This stage only narrows the PROZORRO firehose cheaply (no LLM cost).
 #  It is meant to be wide: it is better to pass an irrelevant tender to the
@@ -7,60 +7,90 @@
 #  relevance decision afterwards.
 #
 #  A tender is kept if EITHER:
-#    - its ДК 021:2015 (CPV) classification code starts with one of
-#      `cpv_prefixes` below, OR
-#    - its title or any item description contains one of `keywords`.
+#    - its ДК 021:2015 (CPV) classification code starts with one of a
+#      category's cpv_prefixes, OR
+#    - its title or any item description contains one of a category's keywords.
+#
+#  The domain section drives the LLM prompts and report labels.
 # ============================================================================
 
-# Broad ДК 021:2015 (CPV) group prefixes covering automotive chemistry.
-#   0921  — Мастильні засоби (lubricants: motor/industrial/base oils, greases,
-#           brake fluids, hydraulic fluids, transmission oils).
-#   2495  — Хімічна продукція спеціального призначення (special-purpose
-#           chemicals: includes anti-freezing preparations / coolants).
-#   2496  — Хімічна продукція різна (miscellaneous chemical products).
-cpv_prefixes:
-  - "0921"
-  - "2495"
-  - "2496"
+domain:
+  name_uk: "автохімія"
+  classify_system_uk: |
+    Ти класифікатор тендерів для постачальника автохімії. Автохімія охоплює: охолоджувальні рідини та антифризи; гальмівні рідини; рідини для омивача скла; моторні, індустріальні та базові оливи. Визнач, чи закупівля стосується автохімії. Будь точним: супутні товари (паливо, фільтри, запчастини, послуги) не є автохімією. Якщо тендер не стосується автохімії — relevant=false і category='other'.
+  report_system_uk: |
+    Ти асистент менеджера з продажу автохімії. Напиши стислий опис тендера українською мовою (1-2 речення): що закуповують, обсяг, орієнтовну вартість та строк поставки (якщо вказано). Без вступних фраз, лише суть.
+  relevant_field_description: "True only if the tender procures automotive-chemistry products."
 
-# Case-insensitive substrings matched against tender title and item
-# descriptions. Ukrainian + Russian spellings, plus common product markings.
-keywords:
-  # coolants / antifreeze
-  - "антифриз"
-  - "тосол"
-  - "охолоджуюч"
-  - "охолоджувальн"
-  - "охлаждающ"
-  - "етиленгліколь"
-  - "пропіленгліколь"
-  - "g11"
-  - "g12"
-  - "g13"
-  # brake fluids
-  - "гальмівн"
-  - "гальмова рідина"
-  - "тормозн"
-  - "dot 3"
-  - "dot 4"
-  - "dot4"
-  - "dot 5"
-  # washer fluids
-  - "омивач"
-  - "омыват"
-  - "склоомивач"
-  - "склообмивач"
-  - "рідина для скла"
-  # motor / industrial / base oils
-  - "олива"
-  - "оливи"
-  - "оливу"
-  - "мастил"
-  - "моторн"
-  - "індустріальн"
-  - "индустриальн"
-  - "трансмісійн"
-  - "гідравлічн"
-  - "базов олив"
-  - "моторное масло"
-  - "масло моторн"
+categories:
+  coolant:
+    label_uk: "Охолоджувальні рідини / антифризи"
+    cpv_prefixes:
+      - "2495"
+    keywords:
+      - "антифриз"
+      - "тосол"
+      - "охолоджуюч"
+      - "охолоджувальн"
+      - "охлаждающ"
+      - "етиленгліколь"
+      - "пропіленгліколь"
+      - "g11"
+      - "g12"
+      - "g13"
+
+  brake_fluid:
+    label_uk: "Гальмівні рідини"
+    cpv_prefixes: []
+    keywords:
+      - "гальмівн"
+      - "гальмова рідина"
+      - "тормозн"
+      - "dot 3"
+      - "dot 4"
+      - "dot4"
+      - "dot 5"
+
+  washer_fluid:
+    label_uk: "Рідини для омивача скла"
+    cpv_prefixes:
+      - "2496"
+    keywords:
+      - "омивач"
+      - "омыват"
+      - "склоомивач"
+      - "склообмивач"
+      - "рідина для скла"
+
+  motor_oil:
+    label_uk: "Моторні оливи"
+    cpv_prefixes:
+      - "0921"
+    keywords:
+      - "олива"
+      - "оливи"
+      - "оливу"
+      - "мастил"
+      - "моторн"
+      - "моторное масло"
+      - "масло моторн"
+
+  industrial_oil:
+    label_uk: "Індустріальні оливи"
+    cpv_prefixes: []
+    keywords:
+      - "індустріальн"
+      - "индустриальн"
+      - "трансмісійн"
+      - "гідравлічн"
+
+  base_oil:
+    label_uk: "Базові оливи"
+    cpv_prefixes: []
+    keywords:
+      - "базов олив"
+
+  other:
+    label_uk: "Інша автохімія"
+    cpv_prefixes: []
+    keywords: []

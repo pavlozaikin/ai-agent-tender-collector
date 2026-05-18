@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from tender_agent.prozorro.models import Classification, FeedPage, NextPage, Tender, TenderItem
 from tender_agent.settings import Settings, get_settings
-from tender_agent.state import CATEGORY_LABELS, ClassifiedTender
+from tender_agent.state import ClassifiedTender
 from tests.conftest import make_tender
+
+_LABELS: dict[str, str] = {
+    "coolant": "Охолоджувальні рідини / антифризи",
+    "other": "Інша автохімія",
+}
 
 
 def test_web_url_uses_public_id() -> None:
@@ -81,18 +86,29 @@ def test_settings_sender_address_falls_back_to_username() -> None:
     assert s.sender_address == "user@smtp.com"
 
 
-# ── state.py line 38: category_label fallback for unknown category ────────────
+# ── state.py: category_label_for fallback for unknown category ────────────
 
 
-def test_classified_tender_category_label_fallback() -> None:
-    """ClassifiedTender.category_label uses the 'other' label for unknown categories (line 38)."""
+def test_classified_tender_category_label_for_fallback() -> None:
+    """ClassifiedTender.category_label_for uses the 'other' label for unknown categories."""
     ct = ClassifiedTender(
         tender=make_tender(),
         relevant=True,
         category="unknown_category",
         reason="test",
     )
-    assert ct.category_label == CATEGORY_LABELS["other"]
+    assert ct.category_label_for(_LABELS) == _LABELS["other"]
+
+
+def test_classified_tender_category_label_for_known() -> None:
+    """ClassifiedTender.category_label_for returns the matching label for a known category."""
+    ct = ClassifiedTender(
+        tender=make_tender(),
+        relevant=True,
+        category="coolant",
+        reason="test",
+    )
+    assert ct.category_label_for(_LABELS) == _LABELS["coolant"]
 
 
 # ── settings.py line 85: get_settings() singleton ───────────────────────────
@@ -100,6 +116,5 @@ def test_classified_tender_category_label_fallback() -> None:
 
 def test_get_settings_returns_settings_instance() -> None:
     """Line 85: get_settings() constructs and returns a Settings instance."""
-    # get_settings is lru_cache'd, so calling it returns a cached or new Settings.
     result = get_settings()
     assert isinstance(result, Settings)

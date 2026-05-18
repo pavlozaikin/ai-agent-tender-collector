@@ -137,7 +137,7 @@ async def test_run_once_degraded_status_when_llm_failures(
 
     # Patch LLMClient to expose a failures list.
     class FakeLLMClient:
-        def __init__(self, s: object, storage: object) -> None:
+        def __init__(self, s: object, storage: object, filters: object = None) -> None:
             self.failures: list[ErrorInfo] = [
                 ErrorInfo(kind="rate_limit", message="The AI model API is rate-limited.")
             ]

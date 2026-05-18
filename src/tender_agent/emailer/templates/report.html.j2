@@ -2,7 +2,7 @@
 <html lang="uk">
 <head>
 <meta charset="UTF-8">
-<title>Звіт по тендерах — автохімія</title>
+<title>Звіт по тендерах — {{ domain_name }}</title>
 <style>
 @page {
   size: A4;
@@ -228,7 +228,7 @@ td, th {
 
 {# ── Header ── #}
 <div class="header">
-  <p class="header-title">Звіт по тендерах — автохімія</p>
+  <p class="header-title">Звіт по тендерах — {{ domain_name }}</p>
   <p class="header-meta">Дата формування: {{ date_str }}&nbsp;&nbsp;|&nbsp;&nbsp;Нових тендерів: {{ total }}</p>
 </div>
 
@@ -244,7 +244,7 @@ td, th {
       </a>
     </p>
     <p class="deadline-item-meta no-indent">
-      {{ r.public_id }}&nbsp;&nbsp;|&nbsp;&nbsp;{{ r.category }}
+      {{ r.public_id }}&nbsp;&nbsp;|&nbsp;&nbsp;{{ category_labels.get(r.category, r.category) }}
       &nbsp;&nbsp;|&nbsp;&nbsp;<span class="deadline-item-deadline">До: {{ r.tender_period_end | format_end_date }}</span>
     </p>
     {% if r.summary %}

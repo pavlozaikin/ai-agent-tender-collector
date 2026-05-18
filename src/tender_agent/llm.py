@@ -19,13 +19,13 @@ from typing import Any, TypeVar, cast
 from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, create_model
 
 from tender_agent.errors import ErrorInfo, classify_llm_error
+from tender_agent.filters import Filters
 from tender_agent.logging import get_logger, narrate
 from tender_agent.prozorro.models import Tender
 from tender_agent.settings import Settings
-from tender_agent.state import CATEGORIES
 from tender_agent.storage import Storage, UsageRecord
 
 _log = get_logger(__name__)
@@ -120,27 +120,27 @@ class _Role:
 class TenderRelevance(BaseModel):
     """Structured verdict produced by the relevance classifier."""
 
-    relevant: bool = Field(
-        description="True only if the tender procures automotive-chemistry products."
+    relevant: bool
+    category: str
+    reason: str
+
+
+def _make_tender_relevance_schema(
+    relevant_field_description: str, categories: list[str]
+) -> type[TenderRelevance]:
+    """Create a TenderRelevance subclass with config-driven field descriptions."""
+    category_desc = "Best-fit category, one of: " + ", ".join(categories)
+    model: type[TenderRelevance] = create_model(
+        "TenderRelevance",
+        __base__=TenderRelevance,
+        relevant=(bool, Field(description=relevant_field_description)),
+        category=(str, Field(description=category_desc)),
+        reason=(
+            str,
+            Field(description="One short sentence in Ukrainian justifying the verdict."),
+        ),
     )
-    category: str = Field(description="Best-fit category, one of: " + ", ".join(CATEGORIES))
-    reason: str = Field(description="One short sentence in Ukrainian justifying the verdict.")
-
-
-_CLASSIFY_SYSTEM = (
-    "Ти класифікатор тендерів для постачальника автохімії. "
-    "Автохімія охоплює: охолоджувальні рідини та антифризи; гальмівні рідини; "
-    "рідини для омивача скла; моторні, індустріальні та базові оливи. "
-    "Визнач, чи закупівля стосується автохімії. Будь точним: супутні товари "
-    "(паливо, фільтри, запчастини, послуги) не є автохімією. "
-    "Якщо тендер не стосується автохімії — relevant=false і category='other'."
-)
-
-_REPORT_SYSTEM = (
-    "Ти асистент менеджера з продажу автохімії. Напиши стислий опис тендера "
-    "українською мовою (1-2 речення): що закуповують, обсяг, орієнтовну "
-    "вартість та строк поставки (якщо вказано). Без вступних фраз, лише суть."
-)
+    return model
 
 
 def _tender_to_text(tender: Tender) -> str:
@@ -171,7 +171,9 @@ def _tender_to_text(tender: Tender) -> str:
 class LLMClient:
     """Runs the two LLM roles with provider fallback and usage accounting."""
 
-    def __init__(self, settings: Settings, storage: Storage) -> None:
+    def __init__(
+        self, settings: Settings, storage: Storage, filters: Filters | None = None
+    ) -> None:
         self._storage = storage
         self._failures: list[ErrorInfo] = []
         self._classify = self._make_role(
@@ -180,6 +182,27 @@ class LLMClient:
         self._report = self._make_role(
             "report", settings.llm_report_primary, settings.llm_report_backup
         )
+        if filters is not None:
+            self._classify_system = filters.domain.classify_system_uk
+            self._report_system = filters.domain.report_system_uk
+            self._relevance_schema: type[TenderRelevance] = _make_tender_relevance_schema(
+                filters.domain.relevant_field_description, filters.categories
+            )
+        else:
+            self._classify_system = (
+                "Ти класифікатор тендерів для постачальника автохімії. "
+                "Автохімія охоплює: охолоджувальні рідини та антифризи; гальмівні рідини; "
+                "рідини для омивача скла; моторні, індустріальні та базові оливи. "
+                "Визнач, чи закупівля стосується автохімії. Будь точним: супутні товари "
+                "(паливо, фільтри, запчастини, послуги) не є автохімією. "
+                "Якщо тендер не стосується автохімії — relevant=false і category='other'."
+            )
+            self._report_system = (
+                "Ти асистент менеджера з продажу автохімії. Напиши стислий опис тендера "
+                "українською мовою (1-2 речення): що закуповують, обсяг, орієнтовну "
+                "вартість та строк поставки (якщо вказано). Без вступних фраз, лише суть."
+            )
+            self._relevance_schema = TenderRelevance
 
     @property
     def failures(self) -> list[ErrorInfo]:
@@ -199,20 +222,20 @@ class LLMClient:
         )
 
     async def classify(self, tender: Tender) -> TenderRelevance:
-        """Classify whether a tender procures automotive chemistry."""
+        """Classify whether a tender is relevant for the configured domain."""
         return await self._run_structured(
             self._classify,
-            TenderRelevance,
-            _CLASSIFY_SYSTEM,
+            self._relevance_schema,
+            self._classify_system,
             _tender_to_text(tender),
-            default=TenderRelevance(
+            default=self._relevance_schema(
                 relevant=False, category="other", reason="Класифікацію не виконано."
             ),
         )
 
     async def summarize(self, tender: Tender) -> str:
         """Write a short Ukrainian summary of a tender for the report."""
-        return await self._run_text(self._report, _REPORT_SYSTEM, _tender_to_text(tender))
+        return await self._run_text(self._report, self._report_system, _tender_to_text(tender))
 
     # ── internals ───────────────────────────────────────────────────────────
     async def _run_structured(
