@@ -5,7 +5,9 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlparse
 
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SmtpSecurity = Literal["starttls", "ssl", "none"]
@@ -32,17 +34,17 @@ class Settings(BaseSettings):
     llm_report_backup: str = "openai:gpt-5.4-mini"
 
     # ── Provider API keys ───────────────────────────────────────────────────
-    openai_api_key: str | None = None
-    anthropic_api_key: str | None = None
-    google_api_key: str | None = None
-    perplexity_api_key: str | None = None
+    openai_api_key: SecretStr | None = None
+    anthropic_api_key: SecretStr | None = None
+    google_api_key: SecretStr | None = None
+    perplexity_api_key: SecretStr | None = None
 
     # ── Email (generic SMTP) ────────────────────────────────────────────────
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
     smtp_security: SmtpSecurity = "starttls"
     smtp_username: str = ""
-    smtp_password: str = ""
+    smtp_password: SecretStr = SecretStr("")
     smtp_from: str = ""
 
     # ── Schedule ────────────────────────────────────────────────────────────
@@ -63,6 +65,17 @@ class Settings(BaseSettings):
     recipients_path: Path = Path("recipients.yaml")
     log_level: str = "INFO"
     log_file_enabled: bool = True
+
+    @field_validator("prozorro_api_base")
+    @classmethod
+    def _validate_prozorro_api_base(cls, value: str) -> str:
+        """Reject non-HTTP(S) PROZORRO base URLs (M1: SSRF / scheme abuse)."""
+        scheme = urlparse(value).scheme
+        if scheme not in {"http", "https"}:
+            raise ValueError(
+                f"PROZORRO_API_BASE must be an http(s) URL, got scheme {scheme!r}: {value!r}"
+            )
+        return value
 
     @property
     def log_file(self) -> Path | None:

@@ -20,7 +20,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from tender_agent.logging import get_logger
+from tender_agent.logging import get_logger, sanitize_log
 from tender_agent.prozorro.models import FeedPage, Tender
 from tender_agent.settings import Settings
 
@@ -243,7 +243,11 @@ class ProzorroClient:
                 if tender is None:
                     _log.warning("prozorro_tender_not_found", tender_id=tid)
                     return
-                _log.info("tender_fetched", tender_id=tender.id, title=tender.title or "—")
+                _log.info(
+                    "tender_fetched",
+                    tender_id=tender.id,
+                    title=sanitize_log(tender.title or "—"),
+                )
                 async with lock:
                     results.append(tender)
 

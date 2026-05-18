@@ -157,3 +157,31 @@ def test_send_ssl_connect(
     assert smtp is not None
     assert smtp.sent is not None
     assert smtp.quit_called is True
+
+
+def test_send_with_security_none_logs_warning(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+    recipients: Recipients,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """L3: SMTP_SECURITY=none emits a WARNING about cleartext transmission."""
+    monkeypatch.setattr(sender_module.smtplib, "SMTP", FakeSMTP)
+    none_settings = settings.model_copy(update={"smtp_security": "none"})
+    with caplog.at_level("WARNING", logger="tender_agent.emailer.sender"):
+        EmailSender(none_settings).send("Тема", "body", recipients)
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert any("cleartext" in str(r.msg) or "cleartext" in r.getMessage() for r in warnings)
+
+
+def test_send_with_starttls_logs_no_insecure_warning(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+    recipients: Recipients,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """L3: the cleartext warning is NOT emitted for secure transports."""
+    monkeypatch.setattr(sender_module.smtplib, "SMTP", FakeSMTP)
+    with caplog.at_level("WARNING", logger="tender_agent.emailer.sender"):
+        EmailSender(settings).send("Тема", "body", recipients)
+    assert not any("cleartext" in r.getMessage() for r in caplog.records)

@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 import structlog
 
-from tender_agent.logging import configure_logging, get_logger, narrate
+from tender_agent.logging import configure_logging, get_logger, narrate, sanitize_log
 
 
 def test_configure_logging_console_only_adds_one_handler() -> None:
@@ -124,6 +124,37 @@ def test_level_filtering_info_not_emitted_at_warning(tmp_path: Path) -> None:
         events = [json.loads(line).get("event") for line in lines]
         assert "should_be_filtered_out" not in events
         assert "should_appear" in events
+
+
+# ── M2: sanitize_log neutralises log-forging input ───────────────────────────
+
+
+def test_sanitize_log_strips_newlines() -> None:
+    """M2: newlines/carriage returns (used to forge fake log lines) are removed."""
+    forged = "real title\nINFO fake_event injected=true\rmore"
+    cleaned = sanitize_log(forged)
+    assert "\n" not in cleaned
+    assert "\r" not in cleaned
+    assert "real title" in cleaned
+
+
+def test_sanitize_log_strips_ansi_escapes() -> None:
+    """M2: ANSI escape sequences (terminal injection) are neutralised."""
+    payload = "title \x1b[31mRED\x1b[0m"
+    cleaned = sanitize_log(payload)
+    assert "\x1b" not in cleaned
+
+
+def test_sanitize_log_truncates_to_max_len() -> None:
+    """M2: the result is capped at max_len characters."""
+    cleaned = sanitize_log("x" * 1000, max_len=50)
+    assert len(cleaned) <= 51  # 50 chars + ellipsis
+    assert cleaned.startswith("x" * 50)
+
+
+def test_sanitize_log_passes_through_clean_text() -> None:
+    """Ordinary text is returned unchanged."""
+    assert sanitize_log("Закупівля антифризу") == "Закупівля антифризу"
 
 
 def test_configure_logging_structlog_uses_bound_logger() -> None:

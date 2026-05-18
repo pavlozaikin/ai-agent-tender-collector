@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -10,6 +11,24 @@ from typing import Any
 
 import structlog
 from structlog.typing import FilteringBoundLogger
+
+# Matches ASCII control characters (C0 range incl. \n, \r, \t and ESC) plus the
+# C1 / DEL range — used to neutralise log-forging and ANSI-escape injection.
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def sanitize_log(text: str, max_len: int = 200) -> str:
+    """Make an attacker-influenced string safe to embed in a log event.
+
+    Replaces every control character — newlines, carriage returns, tabs and
+    ANSI escape sequences (which all start with the ESC control char) — with a
+    space, and truncates the result to *max_len* characters. This prevents log
+    forging (injecting fake log lines) and terminal-escape injection.
+    """
+    cleaned = _CONTROL_CHARS.sub(" ", text)
+    if len(cleaned) > max_len:
+        cleaned = cleaned[:max_len] + "…"
+    return cleaned
 
 
 def configure_logging(level: str = "INFO", log_file: Path | None = None) -> None:

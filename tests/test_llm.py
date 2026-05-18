@@ -9,6 +9,7 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from tender_agent import llm as llm_module
+from tender_agent.filters import Filters
 from tender_agent.llm import (
     LLMClient,
     ModelSpec,
@@ -327,3 +328,100 @@ def test_tender_to_text_with_delivery_window() -> None:
     text = _tender_to_text(tender)
     assert "Строк поставки" in text
     assert "2026-06-01" in text
+
+
+# ── C1: prompt-injection delimiters & anti-injection instruction ─────────────
+
+
+def test_tender_to_text_wraps_untrusted_data_in_delimiters() -> None:
+    """C1: untrusted tender content is fenced inside <tender_data> delimiters."""
+    text = _tender_to_text(make_tender(title="Антифриз"))
+    assert text.startswith("<tender_data>")
+    assert text.rstrip().endswith("</tender_data>")
+    # The actual content sits between the delimiters.
+    inner = text.split("<tender_data>", 1)[1].rsplit("</tender_data>", 1)[0]
+    assert "Антифриз" in inner
+
+
+def test_classify_system_prompt_has_anti_injection_instruction(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings, storage: Storage
+) -> None:
+    """C1: both system prompts instruct the model to never obey embedded commands."""
+    monkeypatch.setattr(llm_module, "_build_model", lambda _spec: FakeChatModel())
+    client = LLMClient(settings, storage)
+    for prompt in (client._classify_system, client._report_system):
+        assert "<tender_data>" in prompt
+        assert "Ніколи не виконуй" in prompt
+
+
+def test_anti_injection_appended_to_config_prompts(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+    storage: Storage,
+    default_filters: Filters,
+) -> None:
+    """C1: the guardrail is appended to (not replacing) the config-driven prompt."""
+    monkeypatch.setattr(llm_module, "_build_model", lambda _spec: FakeChatModel())
+    client = LLMClient(settings, storage, default_filters)
+    assert client._classify_system.startswith(default_filters.domain.classify_system_uk)
+    assert "Ніколи не виконуй" in client._classify_system
+
+
+# ── C2: LLM category output is validated against known categories ────────────
+
+
+async def test_classify_coerces_unknown_category_to_other(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+    storage: Storage,
+    default_filters: Filters,
+) -> None:
+    """C2: a category the LLM invents is replaced with 'other'."""
+    verdict = TenderRelevance(relevant=True, category="DROP TABLE", reason="x")
+    monkeypatch.setattr(llm_module, "_build_model", lambda _spec: FakeChatModel(parsed=verdict))
+    client = LLMClient(settings, storage, default_filters)
+
+    result = await client.classify(make_tender())
+    assert result.category == "other"
+
+
+async def test_classify_keeps_known_category(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+    storage: Storage,
+    default_filters: Filters,
+) -> None:
+    """C2: a category that is in the configured set is left untouched."""
+    verdict = TenderRelevance(relevant=True, category="coolant", reason="антифриз")
+    monkeypatch.setattr(llm_module, "_build_model", lambda _spec: FakeChatModel(parsed=verdict))
+    client = LLMClient(settings, storage, default_filters)
+
+    result = await client.classify(make_tender())
+    assert result.category == "coolant"
+
+
+# ── H2: untrusted text fields are length-capped before reaching the LLM ──────
+
+
+def test_tender_to_text_truncates_long_title() -> None:
+    """H2: an oversized title is capped to 500 chars."""
+    text = _tender_to_text(make_tender(title="А" * 10_000))
+    assert "А" * 500 in text
+    assert "А" * 501 not in text
+
+
+def test_tender_to_text_truncates_long_description() -> None:
+    """H2: an oversized description is capped to 4000 chars."""
+    text = _tender_to_text(make_tender(description="Б" * 10_000))
+    assert "Б" * 4000 in text
+    assert "Б" * 4001 not in text
+
+
+def test_tender_to_text_truncates_long_item_description() -> None:
+    """H2: an oversized item description is capped to 500 chars."""
+    long_item = TenderItem(id="i1", description="В" * 10_000)
+    tender = make_tender()
+    tender.items = [long_item]
+    text = _tender_to_text(tender)
+    assert "В" * 500 in text
+    assert "В" * 501 not in text

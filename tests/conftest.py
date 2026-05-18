@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from tender_agent.filters import Filters, load_filters
 from tender_agent.prozorro.models import Classification, Tender, TenderItem, Unit
 from tender_agent.settings import Settings
 from tender_agent.storage import Storage
@@ -76,6 +77,12 @@ def filters_file(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     return path
+
+
+@pytest.fixture
+def default_filters(filters_file: Path) -> Filters:
+    """The parsed Filters object loaded from the minimal test filters.yaml."""
+    return load_filters(filters_file)
 
 
 @pytest.fixture

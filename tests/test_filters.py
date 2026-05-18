@@ -243,8 +243,12 @@ def test_custom_config_llm_client_uses_domain_prompts(tmp_path: Path) -> None:
     finally:
         llm_module._build_model = orig_build
 
-    assert client._classify_system == "Ти класифікатор канцелярських товарів."
-    assert client._report_system == "Ти асистент з канцелярії."
+    # The config-driven prompt text is preserved; the anti-injection guardrail
+    # (C1) is appended to it.
+    assert client._classify_system.startswith("Ти класифікатор канцелярських товарів.")
+    assert client._report_system.startswith("Ти асистент з канцелярії.")
+    assert "<tender_data>" in client._classify_system
+    assert "<tender_data>" in client._report_system
 
     schema = _make_tender_relevance_schema(
         filters.domain.relevant_field_description, filters.categories

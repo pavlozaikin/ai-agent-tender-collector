@@ -66,7 +66,7 @@ class EmailSender:
             smtp = self._connect()
             try:
                 if s.smtp_username:
-                    smtp.login(s.smtp_username, s.smtp_password)
+                    smtp.login(s.smtp_username, s.smtp_password.get_secret_value())
                 smtp.sendmail(s.sender_address, envelope_recipients, msg.as_bytes())
             finally:
                 smtp.quit()
@@ -87,6 +87,14 @@ class EmailSender:
         """Open and return an SMTP connection per the configured security mode."""
         s = self._settings
         log.info("smtp_connecting", host=s.smtp_host, port=s.smtp_port, security=s.smtp_security)
+        if s.smtp_security == "none":
+            log.warning(
+                "smtp_insecure_transport",
+                message=(
+                    "SMTP_SECURITY=none — credentials and report content will be "
+                    "transmitted in cleartext."
+                ),
+            )
         if s.smtp_security == "ssl":
             return smtplib.SMTP_SSL(s.smtp_host, s.smtp_port)
         conn = smtplib.SMTP(s.smtp_host, s.smtp_port)
