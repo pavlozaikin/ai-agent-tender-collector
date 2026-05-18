@@ -1,6 +1,6 @@
 [project]
 name = "tender-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "AI agent that collects Ukrainian automotive-chemistry tenders from PROZORRO and emails a daily report."
 readme = "README.md"
 requires-python = ">=3.12,<3.14"

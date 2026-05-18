@@ -235,8 +235,8 @@ docker compose down
 ### Building and pushing the image
 
 ```bash
-docker build -t ghcr.io/<org>/tender-agent:1.0.0 .
-docker push ghcr.io/<org>/tender-agent:1.0.0
+docker build -t ghcr.io/<org>/tender-agent:0.2.0 .
+docker push ghcr.io/<org>/tender-agent:0.2.0
 ```
 
 ### Local (uv)
