@@ -57,6 +57,7 @@ def _with_anti_injection(system_prompt: str) -> str:
         return _ANTI_INJECTION_INSTRUCTION
     return f"{base}\n\n{_ANTI_INJECTION_INSTRUCTION}"
 
+
 # Estimated USD price per 1,000,000 tokens, as (input, output). Used only for
 # cost tracking in the llm_usage table — keep roughly in sync with provider
 # pricing. Unknown models fall back to a zero estimate.
