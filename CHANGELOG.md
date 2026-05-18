@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here.
 
+## [0.2.1] — 2026-05-18
+
+### Fixed
+- Correct `astral-sh/setup-uv` commit SHA in CI workflow (previous SHA was invalid and broke CI).
+- Apply `ruff format` to `llm.py` (formatting drift from the security hardening commit).
+
 ## [0.2.0] — 2026-05-18
 
 ### Added
